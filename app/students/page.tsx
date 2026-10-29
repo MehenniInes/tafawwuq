@@ -4,164 +4,231 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
+const localDate = (d = new Date()) =>
+  new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];
 const money = (n: number) => Number(n).toLocaleString() + " DA";
 
-export default function Students() {
-  const [students, setStudents] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
-  const [owed, setOwed] = useState<Record<string, number>>({});
-  const [q, setQ] = useState("");
-  const [panel, setPanel] = useState<"" | "student" | "enroll">("");
-  const [msg, setMsg] = useState("");
+export default function GroupClient({ id }: { id: string }) {
+  const [subject, setSubject] = useState<any>(null);
+  const [rows, setRows] = useState<any[]>([]);
+  const [date, setDate] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [days, setDays] = useState<number[]>([]);
+  const [time, setTime] = useState("");
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
+  async function load(d: string) {
+    const su = await supabase.from("subjects").select("*, teachers(name)").eq("id", id).single();
+    setSubject(su.data);
+    setDays(su.data?.days ?? []);
+    setTime(su.data?.start_time ? su.data.start_time.slice(0, 5) : "");
 
-  const [studentId, setStudentId] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [fee, setFee] = useState("");
+    const en = await supabase
+      .from("enrollments")
+      .select("id, student_id, students(name)")
+      .eq("subject_id", id)
+      .eq("active", true);
+    const ens = en.data ?? [];
+    const ids = ens.map((e: any) => e.id);
 
-  async function load() {
-    const [st, su, cy] = await Promise.all([
-      supabase.from("students").select("*").order("name"),
-      supabase.from("subjects").select("*, teachers(name)").order("name"),
-      supabase.from("cycle_status").select("student_id, remaining"),
-    ]);
-    setStudents(st.data ?? []);
-    setSubjects(su.data ?? []);
-    const map: Record<string, number> = {};
-    (cy.data ?? []).forEach((c: any) => {
-      map[c.student_id] = (map[c.student_id] ?? 0) + Number(c.remaining);
-    });
-    setOwed(map);
+    const latest = new Map<string, any>();
+    let marked = new Set<string>();
+    if (ids.length) {
+      const cy = await supabase
+        .from("cycle_status")
+        .select("*")
+        .in("enrollment_id", ids)
+        .order("created_at", { ascending: false });
+      (cy.data ?? []).forEach((c: any) => {
+        if (!latest.has(c.enrollment_id)) latest.set(c.enrollment_id, c);
+      });
+      const cids = Array.from(latest.values()).map((c: any) => c.id);
+      if (cids.length) {
+        const at = await supabase.from("attendance").select("cycle_id").eq("date", d).in("cycle_id", cids);
+        marked = new Set((at.data ?? []).map((a: any) => a.cycle_id));
+      }
+    }
+
+    const list = ens
+      .map((e: any) => {
+        const c = latest.get(e.id);
+        return {
+          eid: e.id,
+          studentId: e.student_id,
+          name: e.students?.name ?? "?",
+          cycle: c,
+          marked: c ? marked.has(c.id) : false,
+        };
+      })
+      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    setRows(list);
+    setSel(new Set(list.filter((r: any) => r.cycle && !r.cycle.month_finished && !r.marked).map((r: any) => r.eid)));
   }
+
   useEffect(() => {
-    load();
+    setDate(localDate());
   }, []);
 
-  async function addStudent() {
-    if (!name) return;
+  useEffect(() => {
+    if (date) load(date);
+  }, [id, date]);
+
+  const canMark = (r: any) => r.cycle && !r.cycle.month_finished && !r.marked;
+  const eligible = rows.filter(canMark);
+
+  function toggle(eid: string) {
+    const n = new Set(sel);
+    if (n.has(eid)) n.delete(eid);
+    else n.add(eid);
+    setSel(n);
+  }
+
+  async function save() {
+    if (sel.size === 0) return;
+    setSaving(true);
+    const payload = rows.filter((r) => sel.has(r.eid) && r.cycle).map((r) => ({ cycle_id: r.cycle.id, date }));
     const { error } = await supabase
-      .from("students")
-      .insert({ name, phone: phone || null, notes: notes || null });
+      .from("attendance")
+      .upsert(payload, { onConflict: "cycle_id,date", ignoreDuplicates: true });
+    setSaving(false);
     if (error) return alert(error.message);
-    setName("");
-    setPhone("");
-    setNotes("");
-    setPanel("");
-    load();
+    load(date);
   }
 
-  function pickSubject(id: string) {
-    setSubjectId(id);
-    const s = subjects.find((x) => x.id === id);
-    if (s) setFee(String(s.monthly_price));
-  }
-
-  async function enroll() {
-    const s = subjects.find((x) => x.id === subjectId);
-    if (!studentId || !s || !fee) return alert("Choose student, subject and fee");
-    const monthlyFee = Number(fee);
-    const { data, error } = await supabase
-      .from("enrollments")
-      .insert({ student_id: studentId, subject_id: s.id, monthly_fee: monthlyFee })
-      .select()
-      .single();
+  async function saveSchedule() {
+    const { error } = await supabase
+      .from("subjects")
+      .update({ days, start_time: time || null })
+      .eq("id", id);
     if (error) return alert(error.message);
-    const share = (monthlyFee * Number(s.teacher_share_percent)) / 100;
-    const c = await supabase.from("cycles").insert({
-      enrollment_id: data.id,
-      fee: monthlyFee,
-      teacher_share: share,
-    });
-    if (c.error) return alert(c.error.message);
-    setMsg("Student enrolled");
-    setSubjectId("");
-    setFee("");
-    load();
+    setShowSchedule(false);
+    load(date);
   }
 
-  const filtered = students.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  function toggleDay(d: number) {
+    setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d]);
+  }
+
+  if (!subject || !date) return <main className={ui.page}>Loading...</main>;
+
+  const scheduleText = (subject.days ?? []).length
+    ? `${DAY_ORDER.filter((d) => subject.days.includes(d)).map((d) => DAYS[d]).join(", ")} · ${
+        subject.start_time ? subject.start_time.slice(0, 5) : "no time"
+      }`
+    : "No schedule yet";
 
   return (
-    <main className={ui.page}>
-      <h1 className={ui.title}>Students</h1>
+    <main className={`${ui.page} pb-40`}>
+      <Link href="/groups" className={ui.link}>
+        Back to groups
+      </Link>
 
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setPanel(panel === "student" ? "" : "student")}
-          className={panel === "student" ? ui.btn : ui.btn2}
-        >
-          Add student
+      <div className={ui.card}>
+        <h1 className="text-xl font-semibold">
+          {subject.name}
+          {subject.level ? ` · ${subject.level}` : ""}
+        </h1>
+        <p className={ui.muted}>{subject.teachers?.name}</p>
+        <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+          <span className="text-sm">{scheduleText}</span>
+          <button onClick={() => setShowSchedule(!showSchedule)} className={ui.link}>
+            {showSchedule ? "Close" : "Edit schedule"}
+          </button>
+        </div>
+
+        {showSchedule && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {DAY_ORDER.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => toggleDay(d)}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium ${
+                    days.includes(d)
+                      ? "border-teal-700 bg-teal-700 text-white"
+                      : "border-gray-300 bg-white text-gray-700"
+                  }`}
+                >
+                  {DAYS[d]}
+                </button>
+              ))}
+            </div>
+            <input type="time" className={ui.input} value={time} onChange={(e) => setTime(e.target.value)} />
+            <button onClick={saveSchedule} className={ui.btn}>
+              Save schedule
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input
+          type="date"
+          className="rounded-xl border border-gray-300 bg-white px-3 py-2"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+        <div className="flex-1" />
+        <button onClick={() => setSel(new Set(eligible.map((r) => r.eid)))} className={ui.link}>
+          Select all
         </button>
-        <button
-          onClick={() => {
-            setMsg("");
-            setPanel(panel === "enroll" ? "" : "enroll");
-          }}
-          className={panel === "enroll" ? ui.btn : ui.btn2}
-        >
-          Enroll in group
+        <button onClick={() => setSel(new Set())} className={ui.link}>
+          Clear
         </button>
       </div>
 
-      {panel === "student" && (
-        <section className={`${ui.card} space-y-3`}>
-          <input className={ui.input} placeholder="Student name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className={ui.input} placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <textarea className={ui.input} rows={2} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <button onClick={addStudent} className={ui.btn}>
-            Save student
-          </button>
-        </section>
-      )}
+      {rows.length === 0 && <p className={ui.muted}>No students in this group yet.</p>}
 
-      {panel === "enroll" && (
-        <section className={`${ui.card} space-y-3`}>
-          <select className={ui.input} value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-            <option value="">Choose student</option>
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <select className={ui.input} value={subjectId} onChange={(e) => pickSubject(e.target.value)}>
-            <option value="">Choose group</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.level ? ` · ${s.level}` : ""} — {s.teachers?.name} — {s.monthly_price} DA
-              </option>
-            ))}
-          </select>
-          <input className={ui.input} type="number" placeholder="Monthly fee (DA)" value={fee} onChange={(e) => setFee(e.target.value)} />
-          <button onClick={enroll} className={ui.btn}>
-            Enroll
-          </button>
-          {msg && <p className="text-sm font-medium text-teal-700">{msg}</p>}
-        </section>
-      )}
-
-      <input className={ui.input} placeholder="Search students" value={q} onChange={(e) => setQ(e.target.value)} />
-
-      <p className={ui.label}>{filtered.length} students</p>
-
-      {filtered.map((s) => {
-        const left = owed[s.id] ?? 0;
-        return (
-          <Link key={s.id} href={`/students/${s.id}`} className={`${ui.card} flex items-center justify-between`}>
+      {rows.map((r) => (
+        <div key={r.eid} className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3">
+          <label className="flex flex-1 items-center gap-3">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-teal-700"
+              disabled={!canMark(r)}
+              checked={sel.has(r.eid)}
+              onChange={() => toggle(r.eid)}
+            />
             <div className="min-w-0">
-              <p className="truncate font-semibold">{s.name}</p>
-              {s.phone && <p className={ui.muted}>{s.phone}</p>}
+              <p className="truncate font-medium">{r.name}</p>
+              <p className="text-xs text-gray-500">
+                {!r.cycle
+                  ? "No month started"
+                  : r.marked
+                  ? "Present on this date"
+                  : r.cycle.month_finished
+                  ? "Month finished, renew"
+                  : `Session ${r.cycle.sessions_done} of ${r.cycle.sessions_total}`}
+              </p>
             </div>
-            <span className={`shrink-0 text-sm font-medium ${left > 0 ? "text-red-600" : "text-teal-700"}`}>
-              {left > 0 ? `Owes ${money(left)}` : "Paid up"}
+          </label>
+          {r.cycle && (
+            <span
+              className={`text-sm font-medium ${Number(r.cycle.remaining) > 0 ? "text-red-600" : "text-teal-700"}`}
+            >
+              {Number(r.cycle.remaining) > 0 ? money(r.cycle.remaining) : "Paid"}
             </span>
+          )}
+          <Link href={`/students/${r.studentId}`} className="p-1 text-gray-400">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
           </Link>
-        );
-      })}
+        </div>
+      ))}
+
+      <div className="fixed inset-x-0 bottom-16 border-t border-gray-200 bg-white p-3">
+        <div className="mx-auto max-w-lg">
+          <button onClick={save} disabled={sel.size === 0 || saving} className={ui.btn}>
+            {saving ? "Saving..." : `Save attendance (${sel.size})`}
+          </button>
+        </div>
+      </div>
     </main>
   );
 }
