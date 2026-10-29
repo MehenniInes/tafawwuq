@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { ui } from "@/components/ui";
 
 function SubjectForm({ teacherId, onAdded }: { teacherId: string; onAdded: () => void }) {
   const [name, setName] = useState("");
@@ -19,20 +20,29 @@ function SubjectForm({ teacherId, onAdded }: { teacherId: string; onAdded: () =>
       teacher_share_percent: Number(share),
     });
     if (error) return alert(error.message);
-    setName(""); setLevel(""); setPrice(""); onAdded();
+    setName("");
+    setLevel("");
+    setPrice("");
+    onAdded();
   }
 
-  const input = "w-full border rounded p-2";
   return (
-    <div className="space-y-2 mt-3">
-      <input className={input} placeholder="Subject (e.g. Math)" value={name} onChange={(e) => setName(e.target.value)} />
-      <input className={input} list="levels" placeholder="Level (e.g. 3AS)" value={level} onChange={(e) => setLevel(e.target.value)} />
+    <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+      <p className={ui.label}>New subject</p>
+      <input className={ui.input} placeholder="Subject (e.g. Math)" value={name} onChange={(e) => setName(e.target.value)} />
+      <input className={ui.input} list="levels" placeholder="Level (e.g. 3AS)" value={level} onChange={(e) => setLevel(e.target.value)} />
       <datalist id="levels">
-        {["Primary","1AM","2AM","3AM","4AM","1AS","2AS","3AS"].map((l) => <option key={l} value={l} />)}
+        {["Primary", "1AM", "2AM", "3AM", "4AM", "1AS", "2AS", "3AS"].map((l) => (
+          <option key={l} value={l} />
+        ))}
       </datalist>
-      <input className={input} type="number" placeholder="Monthly price (DA)" value={price} onChange={(e) => setPrice(e.target.value)} />
-      <input className={input} type="number" placeholder="Teacher share %" value={share} onChange={(e) => setShare(e.target.value)} />
-      <button onClick={add} className="w-full bg-black text-white rounded p-2">Add subject</button>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={ui.input} type="number" placeholder="Price (DA)" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <input className={ui.input} type="number" placeholder="Teacher %" value={share} onChange={(e) => setShare(e.target.value)} />
+      </div>
+      <button onClick={add} className={ui.btn}>
+        Add subject
+      </button>
     </div>
   );
 }
@@ -42,6 +52,7 @@ export default function Setup() {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [tName, setTName] = useState("");
   const [tPhone, setTPhone] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
 
   async function load() {
     const t = await supabase.from("teachers").select("*").order("name");
@@ -49,13 +60,18 @@ export default function Setup() {
     setTeachers(t.data ?? []);
     setSubjects(s.data ?? []);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function addTeacher() {
     if (!tName) return;
     const { error } = await supabase.from("teachers").insert({ name: tName, phone: tPhone || null });
     if (error) return alert(error.message);
-    setTName(""); setTPhone(""); load();
+    setTName("");
+    setTPhone("");
+    setShowAdd(false);
+    load();
   }
 
   async function removeSubject(id: string) {
@@ -65,28 +81,49 @@ export default function Setup() {
     load();
   }
 
-  const input = "w-full border rounded p-3";
   return (
-    <main className="p-4 max-w-lg mx-auto space-y-6">
-      <Link href="/" className="underline">← Home</Link>
+    <main className={ui.page}>
+      <Link href="/groups" className={ui.link}>
+        Back to groups
+      </Link>
+      <h1 className={ui.title}>Teachers and subjects</h1>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-bold">Add teacher</h2>
-        <input className={input} placeholder="Teacher name" value={tName} onChange={(e) => setTName(e.target.value)} />
-        <input className={input} placeholder="Phone (optional)" value={tPhone} onChange={(e) => setTPhone(e.target.value)} />
-        <button onClick={addTeacher} className="w-full bg-black text-white rounded p-3">Add teacher</button>
-      </section>
+      <button onClick={() => setShowAdd(!showAdd)} className={showAdd ? ui.btn : ui.btn2 + " w-full"}>
+        Add teacher
+      </button>
+
+      {showAdd && (
+        <section className={`${ui.card} space-y-3`}>
+          <input className={ui.input} placeholder="Teacher name" value={tName} onChange={(e) => setTName(e.target.value)} />
+          <input className={ui.input} placeholder="Phone (optional)" value={tPhone} onChange={(e) => setTPhone(e.target.value)} />
+          <button onClick={addTeacher} className={ui.btn}>
+            Save teacher
+          </button>
+        </section>
+      )}
 
       {teachers.map((t) => (
-        <section key={t.id} className="border rounded p-3">
-          <h2 className="text-lg font-bold">{t.name}</h2>
-          <ul className="mt-2 space-y-1">
-            {subjects.filter((s) => s.teacher_id === t.id).map((s) => (
-              <li key={s.id} className="flex justify-between gap-2">
-                <span>{s.name}{s.level ? ` · ${s.level}` : ""} — {s.monthly_price} DA ({s.teacher_share_percent}%)</span>
-                <button onClick={() => removeSubject(s.id)} className="text-red-600">✕</button>
-              </li>
-            ))}
+        <section key={t.id} className={ui.card}>
+          <h2 className="text-lg font-semibold">{t.name}</h2>
+          <ul className="mt-2 divide-y divide-gray-100">
+            {subjects
+              .filter((s) => s.teacher_id === t.id)
+              .map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      {s.name}
+                      {s.level ? ` · ${s.level}` : ""}
+                    </p>
+                    <p className={ui.muted}>
+                      {Number(s.monthly_price).toLocaleString()} DA · teacher gets {s.teacher_share_percent}%
+                    </p>
+                  </div>
+                  <button onClick={() => removeSubject(s.id)} className="text-sm font-medium text-red-600">
+                    Delete
+                  </button>
+                </li>
+              ))}
           </ul>
           <SubjectForm teacherId={t.id} onAdded={load} />
         </section>
