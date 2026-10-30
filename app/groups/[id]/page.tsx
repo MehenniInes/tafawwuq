@@ -19,7 +19,8 @@ export default function GroupPage() {
   const [date, setDate] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [days, setDays] = useState<number[]>([]);
-  const [time, setTime] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -27,7 +28,8 @@ export default function GroupPage() {
     const su = await supabase.from("subjects").select("*, teachers(name)").eq("id", id).single();
     setSubject(su.data);
     setDays(su.data?.days ?? []);
-    setTime(su.data?.start_time ? su.data.start_time.slice(0, 5) : "");
+    setStart(su.data?.start_time ? su.data.start_time.slice(0, 5) : "");
+    setEnd(su.data?.end_time ? su.data.end_time.slice(0, 5) : "");
 
     const en = await supabase
       .from("enrollments")
@@ -77,7 +79,7 @@ export default function GroupPage() {
   }, []);
 
   useEffect(() => {
-    if (date) load(date);
+    if (id && date) load(date);
   }, [id, date]);
 
   const canMark = (r: any) => r.cycle && !r.cycle.month_finished && !r.marked;
@@ -103,9 +105,10 @@ export default function GroupPage() {
   }
 
   async function saveSchedule() {
+    if (start && end && end <= start) return alert("End time must be after start time");
     const { error } = await supabase
       .from("subjects")
-      .update({ days, start_time: time || null })
+      .update({ days, start_time: start || null, end_time: end || null })
       .eq("id", id);
     if (error) return alert(error.message);
     setShowSchedule(false);
@@ -118,10 +121,11 @@ export default function GroupPage() {
 
   if (!subject || !date) return <main className={ui.page}>Loading...</main>;
 
+  const s0 = subject.start_time ? subject.start_time.slice(0, 5) : "";
+  const e0 = subject.end_time ? subject.end_time.slice(0, 5) : "";
+  const timeText = s0 ? (e0 ? `${s0} – ${e0}` : s0) : "no time";
   const scheduleText = (subject.days ?? []).length
-    ? `${DAY_ORDER.filter((d) => subject.days.includes(d)).map((d) => DAYS[d]).join(", ")} · ${
-        subject.start_time ? subject.start_time.slice(0, 5) : "no time"
-      }`
+    ? `${DAY_ORDER.filter((d) => subject.days.includes(d)).map((d) => DAYS[d]).join(", ")} · ${timeText}`
     : "No schedule yet";
 
   return (
@@ -160,7 +164,16 @@ export default function GroupPage() {
                 </button>
               ))}
             </div>
-            <input type="time" className={ui.input} value={time} onChange={(e) => setTime(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className={ui.label}>Starts</p>
+                <input type="time" className={ui.input} value={start} onChange={(e) => setStart(e.target.value)} />
+              </div>
+              <div>
+                <p className={ui.label}>Ends</p>
+                <input type="time" className={ui.input} value={end} onChange={(e) => setEnd(e.target.value)} />
+              </div>
+            </div>
             <button onClick={saveSchedule} className={ui.btn}>
               Save schedule
             </button>
