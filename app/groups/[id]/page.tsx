@@ -40,7 +40,7 @@ export default function GroupPage() {
     const ids = ens.map((e: any) => e.id);
 
     const latest = new Map<string, any>();
-    let marked = new Set<string>();
+    const marked = new Map<string, boolean>();
     if (ids.length) {
       const cy = await supabase
         .from("cycle_status")
@@ -52,26 +52,33 @@ export default function GroupPage() {
       });
       const cids = Array.from(latest.values()).map((c: any) => c.id);
       if (cids.length) {
-        const at = await supabase.from("attendance").select("cycle_id").eq("date", d).in("cycle_id", cids);
-        marked = new Set((at.data ?? []).map((a: any) => a.cycle_id));
+        const at = await supabase
+          .from("attendance")
+          .select("cycle_id, present")
+          .eq("date", d)
+          .in("cycle_id", cids);
+        (at.data ?? []).forEach((a: any) => marked.set(a.cycle_id, a.present));
       }
     }
 
     const list = ens
       .map((e: any) => {
         const c = latest.get(e.id);
+        const rec = c && marked.has(c.id) ? (marked.get(c.id) ? "present" : "absent") : "none";
+        const editable = !!c && (rec !== "none" || !c.month_finished);
         return {
           eid: e.id,
           studentId: e.student_id,
           name: e.students?.name ?? "?",
           cycle: c,
-          marked: c ? marked.has(c.id) : false,
+          rec,
+          editable,
         };
       })
       .sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     setRows(list);
-    setSel(new Set(list.filter((r: any) => r.cycle && !r.cycle.month_finished && !r.marked).map((r: any) => r.eid)));
+    setSel(new Set(list.filter((r: any) => r.editable && r.rec !== "absent").map((r: any) => r.eid)));
   }
 
   useEffect(() => {
@@ -82,8 +89,9 @@ export default function GroupPage() {
     if (id && date) load(date);
   }, [id, date]);
 
-  const canMark = (r: any) => r.cycle && !r.cycle.month_finished && !r.marked;
-  const eligible = rows.filter(canMark);
+  const editable = rows.filter((r) => r.editable);
+  const presentN = editable.filter((r) => sel.has(r.eid)).length;
+  const absentN = editable.length - presentN;
 
   function toggle(eid: string) {
     const n = new Set(sel);
@@ -93,12 +101,14 @@ export default function GroupPage() {
   }
 
   async function save() {
-    if (sel.size === 0) return;
+    if (editable.length === 0) return;
     setSaving(true);
-    const payload = rows.filter((r) => sel.has(r.eid) && r.cycle).map((r) => ({ cycle_id: r.cycle.id, date }));
-    const { error } = await supabase
-      .from("attendance")
-      .upsert(payload, { onConflict: "cycle_id,date", ignoreDuplicates: true });
+    const payload = editable.map((r) => ({
+      cycle_id: r.cycle.id,
+      date,
+      present: sel.has(r.eid),
+    }));
+    const { error } = await supabase.from("attendance").upsert(payload, { onConflict: "cycle_id,date" });
     setSaving(false);
     if (error) return alert(error.message);
     load(date);
@@ -119,11 +129,23 @@ export default function GroupPage() {
     setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d]);
   }
 
+  function statusLine(r: any) {
+    if (!r.cycle) return <span className="text-gray-500">No month started</span>;
+    if (!r.editable) return <span className="text-amber-700">Month finished, renew</span>;
+    if (!sel.has(r.eid)) return <span className="text-red-600">Absent, session counts</span>;
+    const n = r.rec === "none" ? r.cycle.sessions_done + 1 : r.cycle.sessions_done;
+    return (
+      <span className="text-gray-500">
+        Session {n} of {r.cycle.sessions_total}
+      </span>
+    );
+  }
+
   if (!subject || !date) return <main className={ui.page}>Loading...</main>;
 
   const s0 = subject.start_time ? subject.start_time.slice(0, 5) : "";
   const e0 = subject.end_time ? subject.end_time.slice(0, 5) : "";
-  const timeText = s0 ? (e0 ? `${s0} – ${e0}` : s0) : "no time";
+  const timeText = s0 ? (e0 ? `${s0} - ${e0}` : s0) : "no time";
   const scheduleText = (subject.days ?? []).length
     ? `${DAY_ORDER.filter((d) => subject.days.includes(d)).map((d) => DAYS[d]).join(", ")} · ${timeText}`
     : "No schedule yet";
@@ -181,6 +203,8 @@ export default function GroupPage() {
         )}
       </div>
 
+      <p className={ui.muted}>Tick the students who came. Unticked students are marked absent, and the session still counts.</p>
+
       <div className="flex items-center gap-3">
         <input
           type="date"
@@ -189,58 +213,58 @@ export default function GroupPage() {
           onChange={(e) => setDate(e.target.value)}
         />
         <div className="flex-1" />
-        <button onClick={() => setSel(new Set(eligible.map((r) => r.eid)))} className={ui.link}>
-          Select all
+        <button onClick={() => setSel(new Set(editable.map((r) => r.eid)))} className={ui.link}>
+          All present
         </button>
         <button onClick={() => setSel(new Set())} className={ui.link}>
-          Clear
+          All absent
         </button>
       </div>
 
       {rows.length === 0 && <p className={ui.muted}>No students in this group yet.</p>}
 
-      {rows.map((r) => (
-        <div key={r.eid} className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3">
-          <label className="flex flex-1 items-center gap-3">
-            <input
-              type="checkbox"
-              className="h-5 w-5 accent-teal-700"
-              disabled={!canMark(r)}
-              checked={sel.has(r.eid)}
-              onChange={() => toggle(r.eid)}
-            />
-            <div className="min-w-0">
-              <p className="truncate font-medium">{r.name}</p>
-              <p className="text-xs text-gray-500">
-                {!r.cycle
-                  ? "No month started"
-                  : r.marked
-                  ? "Present on this date"
-                  : r.cycle.month_finished
-                  ? "Month finished, renew"
-                  : `Session ${r.cycle.sessions_done} of ${r.cycle.sessions_total}`}
-              </p>
-            </div>
-          </label>
-          {r.cycle && (
-            <span
-              className={`text-sm font-medium ${Number(r.cycle.remaining) > 0 ? "text-red-600" : "text-teal-700"}`}
-            >
-              {Number(r.cycle.remaining) > 0 ? money(r.cycle.remaining) : "Paid"}
-            </span>
-          )}
-          <Link href={`/students/${r.studentId}`} className="p-1 text-gray-400">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </Link>
-        </div>
-      ))}
+      {rows.map((r) => {
+        const ticked = sel.has(r.eid);
+        return (
+          <div
+            key={r.eid}
+            className={`flex items-center gap-2 rounded-2xl border bg-white p-3 ${
+              r.editable && !ticked ? "border-red-300" : "border-gray-200"
+            }`}
+          >
+            <label className="flex flex-1 items-center gap-3">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-teal-700"
+                disabled={!r.editable}
+                checked={r.editable && ticked}
+                onChange={() => toggle(r.eid)}
+              />
+              <div className="min-w-0">
+                <p className="truncate font-medium">{r.name}</p>
+                <p className="text-xs">{statusLine(r)}</p>
+              </div>
+            </label>
+            {r.cycle && (
+              <span
+                className={`text-sm font-medium ${Number(r.cycle.remaining) > 0 ? "text-red-600" : "text-teal-700"}`}
+              >
+                {Number(r.cycle.remaining) > 0 ? money(r.cycle.remaining) : "Paid"}
+              </span>
+            )}
+            <Link href={`/students/${r.studentId}`} className="p-1 text-gray-400">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </Link>
+          </div>
+        );
+      })}
 
       <div className="fixed inset-x-0 bottom-16 border-t border-gray-200 bg-white p-3">
         <div className="mx-auto max-w-lg">
-          <button onClick={save} disabled={sel.size === 0 || saving} className={ui.btn}>
-            {saving ? "Saving..." : `Save attendance (${sel.size})`}
+          <button onClick={save} disabled={editable.length === 0 || saving} className={ui.btn}>
+            {saving ? "Saving..." : `Save attendance (${presentN} present, ${absentN} absent)`}
           </button>
         </div>
       </div>

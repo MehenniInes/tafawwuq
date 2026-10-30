@@ -12,11 +12,13 @@ function CycleCard({
   e,
   cycles,
   payments,
+  records,
   reload,
 }: {
   e: any;
   cycles: any[];
   payments: any[];
+  records: any[];
   reload: () => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -27,6 +29,12 @@ function CycleCard({
   const [cycleNote, setCycleNote] = useState(c?.notes ?? "");
   const oldDebt = cycles.slice(1).reduce((s, x) => s + Number(x.remaining), 0);
   const sub = e.subjects;
+
+  const rec = [...records].sort(
+    (a, b) => a.date.localeCompare(b.date) || String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
+  );
+  const presentN = rec.filter((r) => r.present).length;
+  const absentN = rec.length - presentN;
 
   async function addPayment() {
     const a = Number(amount);
@@ -51,23 +59,26 @@ function CycleCard({
     reload();
   }
 
-  async function addSession() {
-    if (c.sessions_done >= c.sessions_total) return;
-    const { error } = await supabase.from("attendance").insert({ cycle_id: c.id, date: localDate() });
-    if (error) return alert(error.code === "23505" ? "Already marked today" : error.message);
+  async function addSession(present: boolean) {
+    if (c.sessions_done >= c.sessions_total) return alert("Month finished. Start a new month.");
+    const { error } = await supabase
+      .from("attendance")
+      .insert({ cycle_id: c.id, date: localDate(), present });
+    if (error)
+      return alert(error.code === "23505" ? "Today is already recorded. Change it in the list below." : error.message);
     reload();
   }
 
-  async function removeSession() {
-    const { data } = await supabase
-      .from("attendance")
-      .select("id")
-      .eq("cycle_id", c.id)
-      .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (!data || data.length === 0) return;
-    await supabase.from("attendance").delete().eq("id", data[0].id);
+  async function togglePresent(r: any) {
+    const { error } = await supabase.from("attendance").update({ present: !r.present }).eq("id", r.id);
+    if (error) return alert(error.message);
+    reload();
+  }
+
+  async function deleteRecord(rid: string) {
+    if (!confirm("Delete this session?")) return;
+    const { error } = await supabase.from("attendance").delete().eq("id", rid);
+    if (error) return alert(error.message);
     reload();
   }
 
@@ -164,31 +175,65 @@ function CycleCard({
             </p>
           )}
 
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={ui.label}>Sessions</p>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="flex gap-1.5">
-                  {Array.from({ length: c.sessions_total }).map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-3 w-3 rounded-full ${i < c.sessions_done ? "bg-teal-700" : "bg-gray-300"}`}
-                    />
-                  ))}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={ui.label}>Sessions</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    {Array.from({ length: c.sessions_total }).map((_, i) => {
+                      const r = rec[i];
+                      return (
+                        <span
+                          key={i}
+                          className={`h-3 w-3 rounded-full ${
+                            r ? (r.present ? "bg-teal-700" : "bg-red-500") : "bg-gray-300"
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span className="text-sm font-medium">
+                    {c.sessions_done}/{c.sessions_total}
+                  </span>
                 </div>
-                <span className="text-sm font-medium">
-                  {c.sessions_done}/{c.sessions_total}
-                </span>
+                <p className="mt-1 text-xs text-gray-500">
+                  {presentN} present · {absentN} absent
+                </p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={removeSession} className={ui.btn2}>
-                Undo
+
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => addSession(true)} className="rounded-xl bg-teal-700 px-4 py-2 font-medium text-white">
+                Present today
               </button>
-              <button onClick={addSession} className="rounded-xl bg-teal-700 px-4 py-2 font-medium text-white">
-                Add session
+              <button onClick={() => addSession(false)} className="rounded-xl bg-red-500 px-4 py-2 font-medium text-white">
+                Absent today
               </button>
             </div>
+
+            {rec.length > 0 && (
+              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
+                {rec.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 py-2">
+                    <div>
+                      <p className={`font-medium ${r.present ? "text-teal-700" : "text-red-600"}`}>
+                        {r.present ? "Present" : "Absent"}
+                      </p>
+                      <p className="text-xs text-gray-500">{r.date}</p>
+                    </div>
+                    <div className="flex gap-3 text-sm font-medium">
+                      <button onClick={() => togglePresent(r)} className={ui.link}>
+                        {r.present ? "Mark absent" : "Mark present"}
+                      </button>
+                      <button onClick={() => deleteRecord(r.id)} className="text-red-600">
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {c.month_finished && (
@@ -267,6 +312,7 @@ export default function StudentClient({ id }: { id: string }) {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [cycles, setCycles] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
   const [notes, setNotes] = useState("");
   const [editing, setEditing] = useState(false);
   const [nameVal, setNameVal] = useState("");
@@ -285,6 +331,7 @@ export default function StudentClient({ id }: { id: string }) {
       .order("created_at", { ascending: false });
     const cids = (c.data ?? []).map((x: any) => x.id);
     let pays: any[] = [];
+    let atts: any[] = [];
     if (cids.length) {
       const p = await supabase
         .from("payments")
@@ -292,6 +339,11 @@ export default function StudentClient({ id }: { id: string }) {
         .in("cycle_id", cids)
         .order("paid_on", { ascending: false });
       pays = p.data ?? [];
+      const a = await supabase
+        .from("attendance")
+        .select("id, cycle_id, date, present, created_at")
+        .in("cycle_id", cids);
+      atts = a.data ?? [];
     }
     setStudent(s.data);
     setNotes(s.data?.notes ?? "");
@@ -300,6 +352,7 @@ export default function StudentClient({ id }: { id: string }) {
     setEnrollments(e.data ?? []);
     setCycles(c.data ?? []);
     setPayments(pays);
+    setAttendance(atts);
   }
   useEffect(() => {
     load();
@@ -371,12 +424,14 @@ export default function StudentClient({ id }: { id: string }) {
       {enrollments.map((e) => {
         const ec = cycles.filter((c) => c.enrollment_id === e.id);
         const cidSet = new Set(ec.map((c) => c.id));
+        const latestId = ec[0]?.id;
         return (
           <CycleCard
             key={e.id}
             e={e}
             cycles={ec}
             payments={payments.filter((p) => cidSet.has(p.cycle_id))}
+            records={attendance.filter((a) => a.cycle_id === latestId)}
             reload={load}
           />
         );

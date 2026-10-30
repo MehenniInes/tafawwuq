@@ -9,6 +9,7 @@ const money = (n: number) => Number(n).toLocaleString() + " DA";
 export default function Students() {
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [joined, setJoined] = useState<Set<string>>(new Set());
   const [owed, setOwed] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
   const [panel, setPanel] = useState<"" | "student" | "enroll">("");
@@ -23,13 +24,15 @@ export default function Students() {
   const [fee, setFee] = useState("");
 
   async function load() {
-    const [st, su, cy] = await Promise.all([
+    const [st, su, cy, en] = await Promise.all([
       supabase.from("students").select("*").order("name"),
       supabase.from("subjects").select("*, teachers(name)").order("name"),
       supabase.from("cycle_status").select("student_id, remaining"),
+      supabase.from("enrollments").select("student_id, subject_id"),
     ]);
     setStudents(st.data ?? []);
     setSubjects(su.data ?? []);
+    setJoined(new Set((en.data ?? []).map((e: any) => `${e.student_id}|${e.subject_id}`)));
     const map: Record<string, number> = {};
     (cy.data ?? []).forEach((c: any) => {
       map[c.student_id] = (map[c.student_id] ?? 0) + Number(c.remaining);
@@ -62,13 +65,14 @@ export default function Students() {
   async function enroll() {
     const s = subjects.find((x) => x.id === subjectId);
     if (!studentId || !s || !fee) return alert("Choose student, subject and fee");
+    if (joined.has(`${studentId}|${s.id}`)) return alert("This student is already in this group.");
     const monthlyFee = Number(fee);
     const { data, error } = await supabase
       .from("enrollments")
       .insert({ student_id: studentId, subject_id: s.id, monthly_fee: monthlyFee })
       .select()
       .single();
-    if (error) return alert(error.message);
+    if (error) return alert(error.code === "23505" ? "This student is already in this group." : error.message);
     const share = (monthlyFee * Number(s.teacher_share_percent)) / 100;
     const c = await supabase.from("cycles").insert({
       enrollment_id: data.id,
@@ -129,12 +133,16 @@ export default function Students() {
           </select>
           <select className={ui.input} value={subjectId} onChange={(e) => pickSubject(e.target.value)}>
             <option value="">Choose group</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.level ? ` · ${s.level}` : ""} — {s.teachers?.name} — {s.monthly_price} DA
-              </option>
-            ))}
+            {subjects.map((s) => {
+              const already = !!studentId && joined.has(`${studentId}|${s.id}`);
+              return (
+                <option key={s.id} value={s.id} disabled={already}>
+                  {s.name}
+                  {s.level ? ` · ${s.level}` : ""} — {s.teachers?.name} — {s.monthly_price} DA
+                  {already ? " (already in)" : ""}
+                </option>
+              );
+            })}
           </select>
           <input className={ui.input} type="number" placeholder="Monthly fee (DA)" value={fee} onChange={(e) => setFee(e.target.value)} />
           <button onClick={enroll} className={ui.btn}>

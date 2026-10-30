@@ -5,12 +5,14 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
+const money = (n: number) => Number(n).toLocaleString() + " DA";
 const localDate = (d = new Date()) =>
   new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 export default function Today() {
   const router = useRouter();
   const [groups, setGroups] = useState<any[]>([]);
+  const [renewals, setRenewals] = useState<any[]>([]);
   const [ready, setReady] = useState(false);
   const [dateLabel, setDateLabel] = useState("");
 
@@ -22,19 +24,42 @@ export default function Today() {
       const { data } = await supabase.auth.getSession();
       if (!data.session) return router.push("/login");
       const dow = new Date().getDay();
-      const [su, en, at] = await Promise.all([
+      const [su, en, at, cy, st] = await Promise.all([
         supabase.from("subjects").select("*, teachers(name)").order("start_time"),
         supabase.from("enrollments").select("id, subject_id").eq("active", true),
         supabase.from("attendance").select("cycles(enrollment_id)").eq("date", localDate()),
+        supabase
+          .from("cycle_status")
+          .select("id, enrollment_id, student_id, subject_id, month_finished, remaining, created_at")
+          .order("created_at", { ascending: false }),
+        supabase.from("students").select("id, name"),
       ]);
+
+      const subs = su.data ?? [];
       const marked = new Set((at.data ?? []).map((a: any) => a.cycles?.enrollment_id));
-      const list = (su.data ?? [])
+      const list = subs
         .filter((s: any) => (s.days ?? []).includes(dow))
         .map((s: any) => {
           const ens = (en.data ?? []).filter((e: any) => e.subject_id === s.id);
           return { ...s, students: ens.length, done: ens.some((e: any) => marked.has(e.id)) };
         });
       setGroups(list);
+
+      const latest = new Map<string, any>();
+      (cy.data ?? []).forEach((c: any) => {
+        if (!latest.has(c.enrollment_id)) latest.set(c.enrollment_id, c);
+      });
+      const ren = Array.from(latest.values())
+        .filter((c: any) => c.month_finished)
+        .map((c: any) => {
+          const s = subs.find((x: any) => x.id === c.subject_id);
+          return {
+            ...c,
+            student: (st.data ?? []).find((x: any) => x.id === c.student_id)?.name ?? "?",
+            subject: s ? `${s.name}${s.level ? ` · ${s.level}` : ""}` : "",
+          };
+        });
+      setRenewals(ren);
       setReady(true);
     })();
   }, [router]);
@@ -50,6 +75,25 @@ export default function Today() {
 
       {!ready && <p className={ui.muted}>Loading...</p>}
 
+      {renewals.length > 0 && (
+        <section className="space-y-2">
+          <p className={ui.label}>Renewals due ({renewals.length})</p>
+          {renewals.map((c) => (
+            <Link
+              key={c.id}
+              href={`/students/${c.student_id}`}
+              className="block rounded-2xl border border-amber-300 bg-amber-50 p-3"
+            >
+              <p className="font-semibold">{c.student}</p>
+              <p className="text-sm text-gray-600">
+                {c.subject} · month finished
+                {Number(c.remaining) > 0 ? ` · left ${money(c.remaining)}` : " · paid"}
+              </p>
+            </Link>
+          ))}
+        </section>
+      )}
+
       {ready && groups.length === 0 && (
         <div className={`${ui.card} text-center`}>
           <p className="font-medium">No groups scheduled today</p>
@@ -61,6 +105,8 @@ export default function Today() {
 
       {groups.map((g) => {
         const isNext = g.id === next?.id;
+        const a = g.start_time ? g.start_time.slice(0, 5) : "--:--";
+        const b = g.end_time ? g.end_time.slice(0, 5) : "";
         return (
           <Link
             key={g.id}
@@ -69,8 +115,9 @@ export default function Today() {
               isNext ? "border-teal-700 ring-1 ring-teal-700" : "border-gray-200"
             } ${g.done ? "opacity-60" : ""}`}
           >
-            <div className="w-14 shrink-0 text-lg font-semibold tabular-nums">
-              {g.start_time ? g.start_time.slice(0, 5) : "--:--"}
+            <div className="w-16 shrink-0 tabular-nums">
+              <p className="text-lg font-semibold">{a}</p>
+              {b && <p className="text-xs text-gray-500">to {b}</p>}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">
