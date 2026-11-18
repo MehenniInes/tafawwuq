@@ -12,8 +12,12 @@ export default function Students() {
   const [joined, setJoined] = useState<Set<string>>(new Set());
   const [owed, setOwed] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
-  const [showEnroll, setShowEnroll] = useState(false);
+  const [panel, setPanel] = useState<"" | "student" | "enroll">("");
   const [msg, setMsg] = useState("");
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
 
   const [studentId, setStudentId] = useState("");
   const [subjectId, setSubjectId] = useState("");
@@ -39,6 +43,19 @@ export default function Students() {
     load();
   }, []);
 
+  async function addStudent() {
+    if (!name) return;
+    const { error } = await supabase
+      .from("students")
+      .insert({ name, phone: phone || null, notes: notes || null });
+    if (error) return alert(error.message);
+    setName("");
+    setPhone("");
+    setNotes("");
+    setPanel("");
+    load();
+  }
+
   function pickSubject(id: string) {
     setSubjectId(id);
     const s = subjects.find((x) => x.id === id);
@@ -47,7 +64,7 @@ export default function Students() {
 
   async function enroll() {
     const s = subjects.find((x) => x.id === subjectId);
-    if (!studentId || !s || !fee) return alert("Choose student, group and fee");
+    if (!studentId || !s || !fee) return alert("Choose student, subject and fee");
     if (joined.has(`${studentId}|${s.id}`)) return alert("This student is already in this group.");
     const monthlyFee = Number(fee);
     const { data, error } = await supabase
@@ -63,7 +80,7 @@ export default function Students() {
       teacher_share: share,
     });
     if (c.error) return alert(c.error.message);
-    setMsg("Student added to the group");
+    setMsg("Student enrolled");
     setSubjectId("");
     setFee("");
     load();
@@ -76,21 +93,35 @@ export default function Students() {
       <h1 className={ui.title}>Students</h1>
 
       <div className="grid grid-cols-2 gap-3">
-        <Link href="/students/new" className={`${ui.btn} block text-center`}>
+        <button
+          onClick={() => setPanel(panel === "student" ? "" : "student")}
+          className={panel === "student" ? ui.btn : ui.btn2}
+        >
           Add student
-        </Link>
+        </button>
         <button
           onClick={() => {
             setMsg("");
-            setShowEnroll(!showEnroll);
+            setPanel(panel === "enroll" ? "" : "enroll");
           }}
-          className={showEnroll ? ui.btn : ui.btn2}
+          className={panel === "enroll" ? ui.btn : ui.btn2}
         >
-          Add to a group
+          Enroll in group
         </button>
       </div>
 
-      {showEnroll && (
+      {panel === "student" && (
+        <section className={`${ui.card} space-y-3`}>
+          <input className={ui.input} placeholder="Student name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className={ui.input} placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <textarea className={ui.input} rows={2} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <button onClick={addStudent} className={ui.btn}>
+            Save student
+          </button>
+        </section>
+      )}
+
+      {panel === "enroll" && (
         <section className={`${ui.card} space-y-3`}>
           <select className={ui.input} value={studentId} onChange={(e) => setStudentId(e.target.value)}>
             <option value="">Choose student</option>
@@ -115,9 +146,9 @@ export default function Students() {
           </select>
           <input className={ui.input} type="number" placeholder="Monthly fee (DA)" value={fee} onChange={(e) => setFee(e.target.value)} />
           <button onClick={enroll} className={ui.btn}>
-            Add to group
+            Enroll
           </button>
-          {msg && <p className="text-sm font-semibold text-teal-700">{msg}</p>}
+          {msg && <p className="text-sm font-medium text-teal-700">{msg}</p>}
         </section>
       )}
 
@@ -133,7 +164,7 @@ export default function Students() {
               <p className="truncate font-semibold">{s.name}</p>
               {s.phone && <p className={ui.muted}>{s.phone}</p>}
             </div>
-            <span className={`shrink-0 text-sm font-semibold ${left > 0 ? "text-red-600" : "text-teal-700"}`}>
+            <span className={`shrink-0 text-sm font-medium ${left > 0 ? "text-red-600" : "text-teal-700"}`}>
               {left > 0 ? `Owes ${money(left)}` : "Paid up"}
             </span>
           </Link>
