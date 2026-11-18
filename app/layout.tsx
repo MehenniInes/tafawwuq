@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import FloatingActionButton from "@/components/FloatingActionButton";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Suspense fallback={null}>
           <BottomNav />
+          <FloatingActionButton />
         </Suspense>
       </body>
     </html>

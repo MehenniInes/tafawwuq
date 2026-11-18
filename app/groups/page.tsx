@@ -12,8 +12,10 @@ export default function Groups() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [q, setQ] = useState("");
+  const [subTab, setSubTab] = useState<"groups" | "subjects" | "teachers">("groups");
   const [showAdd, setShowAdd] = useState(false);
 
+  // Form states
   const [teacherId, setTeacherId] = useState("");
   const [name, setName] = useState("");
   const [level, setLevel] = useState("");
@@ -58,101 +60,138 @@ export default function Groups() {
 
   return (
     <main className={ui.page}>
-      <div>
-        <p className={ui.muted}>Academy Setup</p>
-        <h1 className={ui.title}>Classes & Staff</h1>
+      <header className="pt-1 flex items-center justify-between mb-4">
+        <div>
+          <p className="text-[12px] font-medium text-slate-500">Academy Setup</p>
+          <h1 className="font-display text-[24px] font-extrabold text-slate-900 tracking-tight">Classes & Staff</h1>
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)} className="h-11 px-4 rounded-full bg-indigo-600 text-white text-[13px] font-semibold inline-flex items-center gap-1.5 shadow-xs spring-press">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>New {subTab === "groups" ? "Group" : subTab === "subjects" ? "Subject" : "Teacher"}</span>
+        </button>
+      </header>
+
+      {/* Material 3 Segmented Tabs */}
+      <div className="grid grid-cols-3 bg-slate-200/80 p-1 rounded-2xl text-[13px] font-semibold mb-4">
+        {(["groups", "subjects", "teachers"] as const).map((t) => (
+          <button key={t} onClick={() => setSubTab(t)}
+            className={`py-2 rounded-xl transition-all ${subTab === t ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"}`}>
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
       </div>
 
-      <button onClick={() => setShowAdd(!showAdd)} className={showAdd ? ui.btn : ui.btn2 + " w-full"}>
-        + Add group
-      </button>
+      {/* Search */}
+      <div className="relative mb-4">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search groups, levels, teachers..." className="w-full h-11 pl-10 pr-4 rounded-full bg-white border border-slate-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-600" />
+      </div>
 
-      {showAdd && (
-        <section className={`${ui.card} space-y-3`}>
-          {teachers.length === 0 ? (
-            <p className={ui.muted}>
-              You need a teacher first. <Link href="/setup" className={ui.link}>Add a teacher</Link>
-            </p>
-          ) : (
-            <>
-              <select className={ui.input} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
-                <option value="">Choose teacher</option>
-                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <input className={ui.input} placeholder="Subject (e.g. Math)" value={name} onChange={(e) => setName(e.target.value)} />
-              <input className={ui.input} list="levels" placeholder="Level (e.g. 3AS)" value={level} onChange={(e) => setLevel(e.target.value)} />
-              <datalist id="levels">
-                {["Primary","1AM","2AM","3AM","4AM","1AS","2AS","3AS"].map((l) => <option key={l} value={l} />)}
-              </datalist>
-              <div className="grid grid-cols-2 gap-3">
-                <input className={ui.input} type="number" placeholder="Price (DA)" value={price} onChange={(e) => setPrice(e.target.value)} />
-                <input className={ui.input} type="number" placeholder="Teacher %" value={share} onChange={(e) => setShare(e.target.value)} />
-              </div>
-              <p className={ui.label}>Days</p>
-              <div className="grid grid-cols-7 gap-1">
-                {DAY_ORDER.map((d) => (
-                  <button key={d} onClick={() => toggleDay(d)}
-                    className={`py-2 rounded-xl text-[11px] font-bold spring-press ${
-                      days.includes(d) ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"}`}>
-                    {DAYS[d].slice(0,1)}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className={ui.label}>Starts</p>
-                  <input type="time" className={ui.input} value={start} onChange={(e) => setStart(e.target.value)} />
-                </div>
-                <div>
-                  <p className={ui.label}>Ends</p>
-                  <input type="time" className={ui.input} value={end} onChange={(e) => setEnd(e.target.value)} />
-                </div>
-              </div>
-              <button onClick={addGroup} className={ui.btn}>Save group</button>
-            </>
-          )}
+      {/* Add Form (Simple inline version) */}
+      {showAdd && subTab === "groups" && (
+        <section className={`${ui.card} space-y-3 mb-4`}>
+          <select className={ui.input} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
+            <option value="">Choose teacher</option>
+            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <input className={ui.input} placeholder="Subject (e.g. Math)" value={name} onChange={(e) => setName(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <input className={ui.input} placeholder="Level (e.g. 3AM)" value={level} onChange={(e) => setLevel(e.target.value)} />
+            <input className={ui.input} type="number" placeholder="Price (DA)" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </div>
+          <button onClick={addGroup} className={ui.btn}>Save group</button>
         </section>
       )}
 
-      <input className={ui.input} placeholder="Search subject, level or teacher" value={q} onChange={(e) => setQ(e.target.value)} />
-
-      <div className="space-y-2.5">
-        {filtered.map((s) => {
-          const count = enrollments.filter((e) => e.subject_id === s.id).length;
-          const dayText = DAY_ORDER.filter((d) => (s.days ?? []).includes(d)).map((d) => DAYS[d]).join(", ");
-          const a = s.start_time ? s.start_time.slice(0, 5) : "";
-          const b = s.end_time ? s.end_time.slice(0, 5) : "";
-          return (
-            <Link key={s.id} href={`/groups/${s.id}`}
-              className="block bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-indigo-600 p-4 spring-press">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-display text-[17px] font-extrabold text-slate-900">
-                    {s.name}{s.level ? ` · ${s.level}` : ""}
-                  </p>
-                  <p className="text-[12px] text-slate-500 mt-0.5">
-                    {s.teachers?.name} · {count} students
-                  </p>
+      {/* GROUPS TAB (2x2 Square Grid) */}
+      {subTab === "groups" && (
+        <div className="grid grid-cols-2 gap-3">
+          {filtered.map((s) => {
+            const count = enrollments.filter((e) => e.subject_id === s.id).length;
+            const a = s.start_time ? s.start_time.slice(0, 5) : "--:--";
+            const day = s.days && s.days.length > 0 ? DAYS[s.days[0]] : "No Day";
+            return (
+              <Link key={s.id} href={`/groups/${s.id}`} className="aspect-square bg-white rounded-3xl border border-slate-200 p-3.5 flex flex-col justify-between shadow-2xs spring-press relative overflow-hidden">
+                {/* Top Accent Bar */}
+                <div className="absolute top-0 inset-x-0 h-1.5 bg-indigo-600"></div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-extrabold">{day}</span>
+                  <span className="text-[11px] font-semibold text-slate-400">{a}</span>
                 </div>
-                {dayText ? (
-                  <div className="shrink-0 text-right">
-                    <p className="text-[12px] font-bold text-indigo-600 tabular-nums">
-                      {a}{b ? ` – ${b}` : ""}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{dayText}</p>
-                  </div>
-                ) : (
-                  <span className="shrink-0 rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 text-[11px] font-bold">
-                    No schedule
+                <div className="my-auto">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">{s.name}</span>
+                  <h3 className="font-display text-[22px] font-extrabold text-slate-900 leading-tight mt-0.5">{s.level || "General"}</h3>
+                  <p className="text-[11px] text-slate-500 truncate mt-1">{s.teachers?.name}</p>
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    {count}
                   </span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+                  <span className="text-[11px] font-extrabold text-slate-900">{Number(s.monthly_price).toLocaleString()} DA</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
-      <Link href="/setup" className={`${ui.link} block text-center`}>Teachers and subjects</Link>
+      {/* SUBJECTS TAB (Curved Folder Tabs) */}
+      {subTab === "subjects" && (
+        <div className="space-y-3.5 pt-1">
+          {filtered.map((s) => {
+            const activeGroups = subjects.filter(g => g.name === s.name).length;
+            return (
+              <div key={s.id} className="pt-0.5">
+                {/* Folder Ear */}
+                <div className="flex items-end justify-between pr-2">
+                  <div className="subject-folder-ear bg-white border-t border-l border-r border-indigo-200/80 px-3.5 py-1.5 inline-flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">
+                      {activeGroups} Groups
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-500 pb-1">Base: {Number(s.monthly_price).toLocaleString()} DA/mo</span>
+                </div>
+                {/* Folder Body */}
+                <div className="subject-folder-tab bg-white rounded-2xl border border-indigo-200/80 p-4 shadow-2xs -mt-[1px]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white font-display font-extrabold text-base flex items-center justify-center shadow-2xs shrink-0">
+                      {s.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="font-display text-[17px] font-extrabold text-slate-900">{s.name}</h3>
+                      <p className="text-[11px] text-slate-500">Syllabus & Active Levels</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                    <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 text-[11px] font-bold">{s.level || "All Levels"}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TEACHERS TAB */}
+      {subTab === "teachers" && (
+        <div className="space-y-2.5">
+          {teachers.map((t) => (
+            <div key={t.id} className="bg-white rounded-2xl border border-slate-200/90 p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-800 font-display font-bold text-sm flex items-center justify-center shrink-0">
+                  {t.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-display text-[15px] font-bold text-slate-900 truncate">{t.name}</h3>
+                  <p className="text-[12px] text-slate-500 truncate">Teacher</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
