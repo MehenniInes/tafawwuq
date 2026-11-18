@@ -1,5 +1,5 @@
 export const ui = {
-  page: "px-4 pt-6 pb-28 max-w-lg mx-auto space-y-4",
+  page: "px-4 pt-6 pb-36 max-w-lg mx-auto space-y-4",
   title: "text-2xl font-bold tracking-tight text-navy",
   label: "text-xs font-semibold uppercase tracking-wide text-gray-500",
   card: "bg-white rounded-2xl border border-gray-200 p-4 shadow-sm",

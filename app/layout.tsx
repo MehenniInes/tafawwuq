@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import QuickActions from "@/components/QuickActions";
 
 export const metadata: Metadata = {
   title: "تفوق",
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Suspense fallback={null}>
           <BottomNav />
+          <QuickActions />
         </Suspense>
       </body>
     </html>
