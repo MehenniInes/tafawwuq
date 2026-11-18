@@ -13,15 +13,14 @@ export default function Students() {
   const [joined, setJoined] = useState<Set<string>>(new Set());
   const [owed, setOwed] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
-  const [panel, setPanel] = useState<"" | "student" | "enroll">("");
-  const [msg, setMsg] = useState("");
+  const [filter, setFilter] = useState("all");
 
+  // Add/Enroll state
+  const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
   const [studentId, setStudentId] = useState("");
   const [subjectId, setSubjectId] = useState("");
-  const [fee, setFee] = useState("");
 
   async function load() {
     const [st, su, cy, en] = await Promise.all([
@@ -41,118 +40,114 @@ export default function Students() {
 
   async function addStudent() {
     if (!name) return;
-    const { error } = await supabase.from("students")
-      .insert({ name, phone: phone || null, notes: notes || null });
+    const { error } = await supabase.from("students").insert({ name, phone });
     if (error) return alert(error.message);
-    setName(""); setPhone(""); setNotes(""); setPanel(""); load();
-  }
-
-  function pickSubject(id: string) {
-    setSubjectId(id);
-    const s = subjects.find((x) => x.id === id);
-    if (s) setFee(String(s.monthly_price));
+    setName(""); setPhone(""); setShowAdd(false); load();
   }
 
   async function enroll() {
-    const s = subjects.find((x) => x.id === subjectId);
-    if (!studentId || !s || !fee) return alert("Choose student, subject and fee");
-
-    // Rule 3: duplicate enrollment guard
-    if (joined.has(`${studentId}|${s.id}`))
-      return alert("This student is already enrolled in this group.");
-
-    const monthlyFee = Number(fee);
-    const { data, error } = await supabase.from("enrollments")
-      .insert({ student_id: studentId, subject_id: s.id, monthly_fee: monthlyFee })
-      .select().single();
-    if (error) return alert(error.code === "23505" ? "This student is already enrolled in this group." : error.message);
-    const share = (monthlyFee * Number(s.teacher_share_percent)) / 100;
-    const c = await supabase.from("cycles").insert({
-      enrollment_id: data.id, fee: monthlyFee, teacher_share: share,
-    });
-    if (c.error) return alert(c.error.message);
-    setMsg("Student enrolled");
-    setSubjectId(""); setFee("");
-    load();
+    if (!studentId || !subjectId) return alert("Select both");
+    
+    // Rule 3: Duplicate Enrollment
+    if (joined.has(`${studentId}|${subjectId}`)) return alert("This student is already enrolled in this group.");
+    
+    const s = subjects.find(x => x.id === subjectId);
+    const fee = Number(s.monthly_price);
+    const { data, error } = await supabase.from("enrollments").insert({ student_id: studentId, subject_id: subjectId, monthly_fee: fee }).select().single();
+    if (error) return alert(error.message);
+    await supabase.from("cycles").insert({ enrollment_id: data.id, fee, teacher_share: fee * (s.teacher_share_percent / 100) });
+    setShowAdd(false); load();
   }
 
-  const filtered = students.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  // Filter & Group
+  const filtered = students.filter(s => {
+    if (!s.name.toLowerCase().includes(q.toLowerCase())) return false;
+    if (filter === "owes" && (owed[s.id] ?? 0) === 0) return false;
+    if (filter === "paid" && (owed[s.id] ?? 0) > 0) return false;
+    return true;
+  });
+
+  const sections: Record<string, any[]> = {};
+  filtered.forEach(s => {
+    const l = s.name[0].toUpperCase();
+    if (!sections[l]) sections[l] = [];
+    sections[l].push(s);
+  });
+  const letters = Object.keys(sections).sort();
 
   return (
-    <main className={ui.page}>
-      <div>
-        <p className={ui.muted}><span className="font-bold text-indigo-600">{students.length}</span> Enrolled Students</p>
-        <h1 className={ui.title}>Directory</h1>
+    <main className={ui.page + " relative"}>
+      <header className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-[12px] font-medium text-slate-500"><span className="text-indigo-600 font-bold">{students.length}</span> Enrolled Students</p>
+          <h1 className="font-display text-[24px] font-extrabold text-slate-900">Directory</h1>
+        </div>
+        <button onClick={() => setShowAdd(true)} className="h-11 px-4 rounded-full bg-indigo-600 text-white text-[13px] font-semibold shadow-xs spring-press">+ Add Student</button>
+      </header>
+
+      <div className="flex gap-2 mb-4">
+        <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name..." className="flex-1 h-10 px-4 rounded-full border border-slate-200 text-[13px] outline-none focus:ring-2 focus:ring-indigo-600" />
+        <button className="h-10 px-3 rounded-full border border-slate-200 bg-white text-[11px] font-bold">A–Z</button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => setPanel(panel === "student" ? "" : "student")}
-          className={panel === "student" ? ui.btn : ui.btn2 + " w-full"}>+ Add student</button>
-        <button onClick={() => { setMsg(""); setPanel(panel === "enroll" ? "" : "enroll"); }}
-          className={panel === "enroll" ? ui.btn : ui.btn2 + " w-full"}>Enroll in group</button>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
+        {["all", "owes", "paid"].map(f => (
+          <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-full text-[12px] font-semibold ${filter === f ? "bg-indigo-600 text-white" : "bg-white border border-slate-200"}`}>
+            {f === "all" ? `All (${students.length})` : f === "owes" ? "Owes" : "Paid Up"}
+          </button>
+        ))}
       </div>
 
-      {panel === "student" && (
-        <section className={`${ui.card} space-y-3`}>
-          <input className={ui.input} placeholder="Student name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className={ui.input} placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <textarea className={ui.input} rows={2} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <button onClick={addStudent} className={ui.btn}>Save student</button>
-        </section>
-      )}
-
-      {panel === "enroll" && (
-        <section className={`${ui.card} space-y-3`}>
-          <select className={ui.input} value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-            <option value="">Choose student</option>
-            {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select className={ui.input} value={subjectId} onChange={(e) => pickSubject(e.target.value)}>
-            <option value="">Choose group</option>
-            {subjects.map((s) => {
-              const already = !!studentId && joined.has(`${studentId}|${s.id}`);
-              return (
-                <option key={s.id} value={s.id} disabled={already}>
-                  {s.name}{s.level ? ` · ${s.level}` : ""} — {s.teachers?.name} — {s.monthly_price} DA{already ? " (already enrolled)" : ""}
-                </option>
-              );
-            })}
-          </select>
-          <input className={ui.input} type="number" placeholder="Monthly fee (DA)" value={fee} onChange={(e) => setFee(e.target.value)} />
-          <button onClick={enroll} className={ui.btn}>Enroll</button>
-          {msg && <p className="text-[13px] font-semibold text-emerald-700">{msg}</p>}
-        </section>
-      )}
-
-      <input className={ui.input} placeholder="Search students" value={q} onChange={(e) => setQ(e.target.value)} />
-
-      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">{filtered.length} students</p>
-
-      <div className="bg-white rounded-2xl border border-slate-200/90 divide-y divide-slate-100 overflow-hidden">
-        {filtered.map((s) => {
-          const left = owed[s.id] ?? 0;
-          const paid = left === 0;
-          return (
-            <Link key={s.id} href={`/students/${s.id}`}
-              className="flex items-center justify-between gap-2.5 px-4 py-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={`w-9 h-9 rounded-xl font-display font-bold text-[12px] flex items-center justify-center shrink-0 ${
-                  paid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                  {initials(s.name)}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate font-display font-bold text-slate-900">{s.name}</p>
-                  {s.phone && <p className="text-[11px] text-slate-500 truncate">{s.phone}</p>}
-                </div>
+      <div className="relative flex">
+        <div className="flex-1 pr-6 space-y-4">
+          {letters.map(l => (
+            <div key={l} id={`sec-${l}`} className="scroll-mt-4">
+              <p className="text-[12px] font-extrabold text-indigo-600 mb-1">{l}</p>
+              <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                {sections[l].map(s => {
+                  const isPaid = (owed[s.id] ?? 0) === 0;
+                  return (
+                    <Link key={s.id} href={`/students/${s.id}`} className="flex justify-between items-center px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl font-bold text-[12px] flex items-center justify-center ${isPaid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{initials(s.name)}</div>
+                        <div><p className="font-bold text-[14px] text-slate-900">{s.name}</p><p className="text-[11px] text-slate-500">{s.phone || "No phone"}</p></div>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${isPaid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                        {isPaid ? "Paid ✓" : `Owes ${money(owed[s.id])}`}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
-              <span className={`shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${
-                paid ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                {paid ? "Paid ✓" : `Owes ${money(left)}`}
-              </span>
-            </Link>
-          );
-        })}
+            </div>
+          ))}
+        </div>
+        {/* Sticky A-Z Rail */}
+        <div className="sticky top-4 w-5 bg-white/90 rounded-full py-1.5 flex flex-col items-center gap-0.5 border border-slate-200">
+          {letters.map(l => (
+            <a key={l} href={`#sec-${l}`} className="text-[9px] font-extrabold text-slate-500 hover:text-indigo-600">{l}</a>
+          ))}
+        </div>
       </div>
+
+      {/* Add Student Sheet */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div onClick={() => setShowAdd(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
+             <h3 className="font-display font-extrabold text-lg mb-4">New Student / Enroll</h3>
+             <div className="space-y-3">
+               <input type="text" placeholder="Full Name" value={name} onChange={(e)=>setName(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300" />
+               <input type="tel" placeholder="Phone (optional)" value={phone} onChange={(e)=>setPhone(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300" />
+               <button onClick={addStudent} className="w-full h-12 rounded-full bg-indigo-600 text-white font-semibold">Save Student</button>
+               <div className="border-t border-slate-200 my-2" />
+               <select onChange={(e)=>setStudentId(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300"><option value="">Choose Student to Enroll</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+               <select onChange={(e)=>setSubjectId(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300"><option value="">Choose Group</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name} · {s.level}</option>)}</select>
+               <button onClick={enroll} className="w-full h-12 rounded-full bg-emerald-600 text-white font-semibold">Enroll Student</button>
+             </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
