@@ -49,24 +49,25 @@ export default function BottomNav() {
   const path = usePathname();
   if (path === "/login") return null;
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 flex h-16 border-t border-gray-200 bg-white">
+    <nav className="fixed bottom-0 inset-x-0 z-50 flex h-16 border-t border-gray-200 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
       {tabs.map((t) => {
         const active = t.href === "/" ? path === "/" : path.startsWith(t.href);
         return (
           <Link
             key={t.href}
             href={t.href}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium ${
-              active ? "text-teal-700" : "text-gray-400"
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold ${
+              active ? "text-brand" : "text-gray-400"
             }`}
           >
+            {active && <span className="absolute top-0 h-1 w-10 rounded-b-full bg-accent" />}
             <svg
               width="22"
               height="22"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             >

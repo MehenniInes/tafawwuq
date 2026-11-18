@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
@@ -17,25 +18,32 @@ export default function Login() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className={`${ui.card} w-full max-w-sm space-y-4 !p-6`}>
-        <div>
-          <h1 className="text-2xl font-semibold">تفوق</h1>
-          <p className={ui.muted}>Sign in to manage the center</p>
-        </div>
-        <input className={ui.input} placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input
-          className={ui.input}
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+    <main className="flex min-h-[90vh] items-center justify-center px-4">
+      <div className="w-full max-w-sm space-y-4">
+        <Image
+          src="/logo.png"
+          alt="مركز التفوق Academy"
+          width={300}
+          height={300}
+          priority
+          className="mx-auto -my-10 h-auto w-64"
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button onClick={submit} className={ui.btn}>
-          Sign in
-        </button>
+        <div className={`${ui.card} space-y-4 !p-6`}>
+          <p className="text-center text-sm text-gray-500">Sign in to manage the center</p>
+          <input className={ui.input} placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            className={ui.input}
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+          />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button onClick={submit} className={ui.btn}>
+            Sign in
+          </button>
+        </div>
       </div>
     </main>
   );
