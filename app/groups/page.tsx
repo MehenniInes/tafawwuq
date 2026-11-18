@@ -16,16 +16,25 @@ function GroupsContent() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [subTab, setSubTab] = useState<"groups" | "subjects" | "teachers">(initialTab);
   const [q, setQ] = useState("");
-  const [showAddGroup, setShowAddGroup] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
-  // Form State for New Group
+  // --- FORM STATES ---
+  // 1. Group Form
   const [formTeacher, setFormTeacher] = useState("");
   const [formSubject, setFormSubject] = useState("");
   const [formLevel, setFormLevel] = useState("");
-  const [formDay, setFormDay] = useState(3); // Wed default
+  const [formDay, setFormDay] = useState(3);
   const [formStart, setFormStart] = useState("14:00");
   const [formEnd, setFormEnd] = useState("15:30");
   const [formFee, setFormFee] = useState("1200");
+  
+  // 2. Subject Form
+  const [subName, setSubName] = useState("");
+  const [subFee, setSubFee] = useState("1200");
+
+  // 3. Teacher Form
+  const [tchName, setTchName] = useState("");
+  const [tchPhone, setTchPhone] = useState("");
 
   async function load() {
     const [su, en, te] = await Promise.all([
@@ -35,9 +44,11 @@ function GroupsContent() {
     ]);
     setSubjects(su.data ?? []); setEnrollments(en.data ?? []); setTeachers(te.data ?? []);
   }
+  
   useEffect(() => { load(); }, []);
   useEffect(() => { if (initialTab) setSubTab(initialTab); }, [initialTab]);
 
+  // --- CREATE HANDLERS ---
   async function createGroup() {
     if (!formTeacher || !formSubject || !formFee) return alert("Please fill all fields");
     const { error } = await supabase.from("subjects").insert({
@@ -51,11 +62,38 @@ function GroupsContent() {
       end_time: formEnd,
     });
     if (error) return alert(error.message);
-    setShowAddGroup(false);
+    setShowAdd(false);
     load();
   }
 
-  const filtered = subjects.filter((s) => `${s.name} ${s.level ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  async function createSubject() {
+    if (!subName || !subFee) return alert("Please fill all fields");
+    // Note: If your 'subjects' table requires a teacher, we might need to add that.
+    // Assuming it can be null for a base subject folder.
+    const { error } = await supabase.from("subjects").insert({
+      name: subName,
+      monthly_price: Number(subFee),
+      teacher_share_percent: 50,
+    });
+    if (error) return alert(error.message);
+    setShowAdd(false);
+    load();
+  }
+
+  async function createTeacher() {
+    if (!tchName) return alert("Please enter a name");
+    const { error } = await supabase.from("teachers").insert({
+      name: tchName,
+      phone: tchPhone || null,
+    });
+    if (error) return alert(error.message);
+    setShowAdd(false);
+    load();
+  }
+
+  const filteredGroups = subjects.filter((s) => `${s.name} ${s.level ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  const filteredSubjects = subjects.filter((s) => `${s.name}`.toLowerCase().includes(q.toLowerCase()));
+  const filteredTeachers = teachers.filter((t) => `${t.name}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <main className={ui.page}>
@@ -65,7 +103,7 @@ function GroupsContent() {
           <h1 className="font-display text-[24px] font-extrabold text-slate-900">Classes & Staff</h1>
         </div>
         {/* Dynamic Button */}
-        <button onClick={() => setShowAddGroup(true)} className="h-11 px-4 rounded-full bg-indigo-600 text-white text-[13px] font-semibold shadow-xs spring-press">
+        <button onClick={() => setShowAdd(true)} className="h-11 px-4 rounded-full bg-indigo-600 text-white text-[13px] font-semibold shadow-xs spring-press">
           + New {subTab === "groups" ? "Group" : subTab === "subjects" ? "Subject" : "Teacher"}
         </button>
       </header>
@@ -82,9 +120,10 @@ function GroupsContent() {
         <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search..." className="w-full h-11 px-4 rounded-full bg-white border border-slate-200 text-[13px]" />
       </div>
 
+      {/* GROUPS TAB */}
       {subTab === "groups" && (
         <div className="grid grid-cols-2 gap-3">
-          {filtered.map((s) => {
+          {filteredGroups.map((s) => {
             const count = enrollments.filter((e) => e.subject_id === s.id).length;
             const day = s.days && s.days.length > 0 ? DAYS[s.days[0]] : "No Day";
             return (
@@ -99,46 +138,73 @@ function GroupsContent() {
         </div>
       )}
 
-      {/* Subjects & Teachers tabs (Keep your existing UI here) */}
+      {/* SUBJECTS TAB */}
+      {subTab === "subjects" && (
+        <div className="space-y-3.5 pt-1">
+          {filteredSubjects.map((s) => (
+            <div key={s.id} className="pt-0.5">
+              <div className="flex items-end justify-between pr-2">
+                <div className="subject-folder-ear bg-white border-t border-l border-r border-indigo-200 px-3.5 py-1.5 inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                  <span className="text-[11px] font-extrabold uppercase text-indigo-700">{subjects.filter(x => x.name === s.name).length} Groups</span>
+                </div>
+                <span className="text-[11px] font-bold text-slate-500 pb-1">Base: {Number(s.monthly_price).toLocaleString()} DA</span>
+              </div>
+              <div className="subject-folder-tab bg-white rounded-2xl border border-indigo-200 p-4 shadow-2xs -mt-[1px]">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">{s.name.slice(0, 2).toUpperCase()}</div>
+                  <div>
+                    <h3 className="font-display text-[17px] font-extrabold text-slate-900">{s.name}</h3>
+                    <p className="text-[11px] text-slate-500">Syllabus & Active Levels</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* EXACT New Group Sheet from Screenshot 1 */}
-      {showAddGroup && (
+      {/* TEACHERS TAB */}
+      {subTab === "teachers" && (
+        <div className="space-y-2.5">
+          {filteredTeachers.map((t) => (
+            <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-800 font-bold flex items-center justify-center">{t.name.substring(0, 2).toUpperCase()}</div>
+                <div>
+                  <h3 className="font-bold text-slate-900">{t.name}</h3>
+                  <p className="text-[12px] text-slate-500">{t.phone || "No phone"}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* --- CORRECT FORM MODALS --- */}
+      
+      {/* 1. New Group Sheet */}
+      {showAdd && subTab === "groups" && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div onClick={() => setShowAddGroup(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div onClick={() => setShowAdd(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
           <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-display font-extrabold text-[19px]">New Group & Schedule</h3>
-              <button onClick={() => setShowAddGroup(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">✕</button>
+              <button onClick={() => setShowAdd(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">✕</button>
             </div>
-            
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Subject</label>
-                  <select value={formSubject} onChange={(e) => setFormSubject(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 bg-white">
-                    <option value="">Select...</option>
-                    <option value="English">English</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="French">French</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Level</label>
-                  <input type="text" value={formLevel} onChange={(e) => setFormLevel(e.target.value)} placeholder="e.g. 3AM" className="w-full h-12 px-3 rounded-xl border border-slate-300" />
-                </div>
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Subject</label><input type="text" value={formSubject} onChange={(e) => setFormSubject(e.target.value)} placeholder="English" className="w-full h-12 px-3 rounded-xl border border-slate-300" /></div>
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Level</label><input type="text" value={formLevel} onChange={(e) => setFormLevel(e.target.value)} placeholder="e.g. 3AM" className="w-full h-12 px-3 rounded-xl border border-slate-300" /></div>
               </div>
-
               <div>
                 <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Assign Teacher</label>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
                   {teachers.map(t => (
-                    <button key={t.id} onClick={() => setFormTeacher(t.id)} className={`px-3 py-2 rounded-full text-[12px] font-bold whitespace-nowrap border ${formTeacher === t.id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white border-slate-200 text-slate-700"}`}>
-                      {t.name}
-                    </button>
+                    <button key={t.id} onClick={() => setFormTeacher(t.id)} className={`px-3 py-2 rounded-full text-[12px] font-bold whitespace-nowrap border ${formTeacher === t.id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white border-slate-200 text-slate-700"}`}>{t.name}</button>
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Class Day</label>
                 <div className="grid grid-cols-7 gap-1">
@@ -147,14 +213,60 @@ function GroupsContent() {
                   ))}
                 </div>
               </div>
-
               <div className="grid grid-cols-3 gap-2">
                 <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Start</label><input type="time" value={formStart} onChange={(e) => setFormStart(e.target.value)} className="w-full h-11 px-2 rounded-xl border border-slate-300" /></div>
                 <div><label className="text-[10px] font-bold text-slate-500 block mb-1">End</label><input type="time" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} className="w-full h-11 px-2 rounded-xl border border-slate-300" /></div>
                 <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Fee (DA)</label><input type="number" value={formFee} onChange={(e) => setFormFee(e.target.value)} className="w-full h-11 px-2 rounded-xl border border-slate-300 font-bold" /></div>
               </div>
-
               <button onClick={createGroup} className="w-full h-12 rounded-full bg-emerald-600 text-white font-semibold shadow-sm spring-press">Create Group</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. New Subject Sheet */}
+      {showAdd && subTab === "subjects" && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div onClick={() => setShowAdd(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-extrabold text-[19px]">New Subject Folder</h3>
+              <button onClick={() => setShowAdd(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">✕</button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Subject Name</label>
+                <input type="text" value={subName} onChange={(e) => setSubName(e.target.value)} placeholder="e.g. Physics, French, Mathematics" className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[14px]" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Default Fee (DA)</label>
+                <input type="number" value={subFee} onChange={(e) => setSubFee(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[14px] font-semibold" />
+              </div>
+              <button onClick={createSubject} className="w-full h-12 rounded-full bg-violet-600 text-white font-semibold shadow-sm spring-press">Save Subject</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. New Teacher Sheet */}
+      {showAdd && subTab === "teachers" && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div onClick={() => setShowAdd(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-extrabold text-[19px]">New Teacher</h3>
+              <button onClick={() => setShowAdd(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">✕</button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Teacher Full Name</label>
+                <input type="text" value={tchName} onChange={(e) => setTchName(e.target.value)} placeholder="e.g. Benali Karim" className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[14px]" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Phone Number</label>
+                <input type="tel" value={tchPhone} onChange={(e) => setTchPhone(e.target.value)} placeholder="0550 12 34 56" className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[14px]" />
+              </div>
+              <button onClick={createTeacher} className="w-full h-12 rounded-full bg-amber-600 text-white font-semibold shadow-sm spring-press">Add Teacher</button>
             </div>
           </div>
         </div>
@@ -164,5 +276,5 @@ function GroupsContent() {
 }
 
 export default function Groups() {
-  return <Suspense fallback={<div>Loading...</div>}><GroupsContent /></Suspense>;
+  return <Suspense fallback={<div className="p-6 text-center text-sm">Loading...</div>}><GroupsContent /></Suspense>;
 }

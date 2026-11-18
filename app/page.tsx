@@ -71,6 +71,26 @@ export default function Home() {
     <main className={ui.page}>
       <header className="flex items-center justify-between mb-4">
         <div><p className="text-[12px] font-medium text-slate-500">Cashflow & Payroll</p><h1 className="font-display text-[24px] font-extrabold text-slate-900">Money</h1></div>
+        
+        {/* Dynamic Top Button */}
+        <button 
+          onClick={() => {
+            if (tab === "students") {
+              // If students tab, open the first unpaid student, or alert if none
+              const next = unpaidStudents[0];
+              if (next) { setPayStudent(next); setAmount(next.remaining.toString()); }
+              else alert("No unpaid students right now!");
+            } else {
+              // If teachers tab, open the first unpaid teacher
+              const next = teachers.find(t => Number(t.owed) > Number(t.paid_out));
+              if (next) { setPayTeacher(next); setAmount((Number(next.owed) - Number(next.paid_out)).toString()); }
+              else alert("All teachers are paid up!");
+            }
+          }} 
+          className="h-10 px-4 rounded-full bg-emerald-600 text-white text-[12px] font-semibold shadow-2xs spring-press"
+        >
+          + {tab === "students" ? "Collect Fee" : "Pay Teacher"}
+        </button>
       </header>
 
       <div className="grid grid-cols-2 bg-slate-200/80 p-1 rounded-2xl text-[13px] font-semibold mb-4">
@@ -123,7 +143,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* EXACT Collect Fee Sheet from Screenshot 3 */}
+      {/* Collect Fee Sheet */}
       {payStudent && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
           <div onClick={() => setPayStudent(null)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
@@ -148,7 +168,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* EXACT Teacher Payroll Sheet from Screenshot 2 */}
+      {/* Teacher Payroll Sheet */}
       {payTeacher && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
           <div onClick={() => setPayTeacher(null)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
