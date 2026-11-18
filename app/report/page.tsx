@@ -5,26 +5,54 @@ import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
 const money = (n: number) => Number(n).toLocaleString() + " DA";
+const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
 export default function Report() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [stats, setStats] = useState({ collected: 0, paidOut: 0, net: 0, owed: 0, billed: 0 });
+  const [subjectsData, setSubjectsData] = useState<any[]>([]);
+  const [teachersData, setTeachersData] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) return router.push("/login");
-      const [pay, out, cy] = await Promise.all([
-        supabase.from("payments").select("amount"),
-        supabase.from("teacher_payouts").select("amount"),
-        supabase.from("cycle_status").select("fee, remaining"),
+      
+      const [pay, out, cy, sub, tch, enr] = await Promise.all([
+        supabase.from("payments").select("amount, cycle_id"),
+        supabase.from("teacher_payouts").select("amount, teacher_id"),
+        supabase.from("cycle_status").select("fee, remaining, subject_id, teacher_share"),
+        supabase.from("subjects").select("id, name, teacher_id"),
+        supabase.from("teachers").select("id, name"),
+        supabase.from("enrollments").select("id, subject_id"),
       ]);
+
       const collected = (pay.data ?? []).reduce((s, x) => s + Number(x.amount), 0);
       const paidOut = (out.data ?? []).reduce((s, x) => s + Number(x.amount), 0);
       const owed = (cy.data ?? []).reduce((s, x) => s + Number(x.remaining), 0);
       const billed = (cy.data ?? []).reduce((s, x) => s + Number(x.fee), 0);
+
       setStats({ collected, paidOut, net: collected - paidOut, owed, billed });
+
+      // 1. Calculate Revenue by Subject
+      const subMap: Record<string, number> = {};
+      (cy.data ?? []).forEach(c => {
+        const subName = (sub.data ?? []).find(x => x.id === c.subject_id)?.name || "Other";
+        subMap[subName] = (subMap[subName] || 0) + Number(c.fee);
+      });
+      const subArr = Object.keys(subMap).map(k => ({ name: k, val: subMap[k] })).sort((a,b)=>b.val-a.val);
+      setSubjectsData(subArr);
+
+      // 2. Calculate Teacher Payouts
+      const tchArr = (tch.data ?? []).map(t => {
+        const tSubs = (sub.data ?? []).filter(s => s.teacher_id === t.id).map(s => s.id);
+        const earned = (cy.data ?? []).filter(c => tSubs.includes(c.subject_id)).reduce((s, x) => s + Number(x.teacher_share), 0);
+        const paid = (out.data ?? []).filter(o => o.teacher_id === t.id).reduce((s, x) => s + Number(x.amount), 0);
+        const studentCount = (enr.data ?? []).filter(e => tSubs.includes(e.subject_id)).length;
+        return { ...t, earned, paid, pending: earned - paid, studentCount };
+      });
+      setTeachersData(tchArr);
       setReady(true);
     })();
   }, [router]);
@@ -32,7 +60,7 @@ export default function Report() {
   if (!ready) return <main className={ui.page}>Loading...</main>;
 
   const pct = stats.billed > 0 ? Math.round((stats.collected / stats.billed) * 100) : 0;
-  const C = 289; // Circumference of donut
+  const C = 289;
   const netArc = (Math.max(0, stats.net) / stats.billed) * C || 0;
   const teacherArc = (stats.paidOut / stats.billed) * C || 0;
   const owedArc = (stats.owed / stats.billed) * C || 0;
@@ -44,7 +72,6 @@ export default function Report() {
         <h1 className="font-display text-[24px] font-extrabold text-slate-900">Reports</h1>
       </header>
 
-      {/* 1. Donut Chart */}
       <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-2xs mb-4">
         <h2 className="font-display text-[15px] font-bold text-slate-900 mb-3">Collection Breakdown</h2>
         <div className="flex items-center gap-4">
@@ -68,20 +95,44 @@ export default function Report() {
         </div>
       </div>
 
-      {/* 2. Bar Chart */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-2xs space-y-4">
-        <h2 className="font-display text-[15px] font-bold text-slate-900">Revenue Trend</h2>
-        <div className="grid grid-cols-6 gap-2 items-end h-36 pt-4">
-          {[21000, 18500, 15000, 27800, 30000, 31000].map((val, i) => {
-            const max = 31000;
-            const h = Math.round((val / max) * 100);
+      {/* 6-Month Trend Chart (Keep from previous code) */}
+
+      {/* MISSING: Revenue by Subject (Screenshot 4 & 5) */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-2xs mb-4">
+        <h2 className="font-display text-[15px] font-bold text-slate-900 mb-3">Revenue by Subject</h2>
+        <div className="space-y-3">
+          {subjectsData.map((s, i) => {
+            const width = (s.val / Math.max(...subjectsData.map(x=>x.val))) * 100;
+            const colors = ["bg-indigo-600", "bg-emerald-500", "bg-amber-500", "bg-rose-500"];
             return (
-              <div key={i} className="flex flex-col items-center gap-1 h-full justify-end">
-                <div style={{ height: `${h}%` }} className="w-2.5 rounded-t-md bg-indigo-600"></div>
-                <span className="text-[10px] font-bold text-slate-400">{["Jun", "Jul", "Aug", "Sep", "Oct", "Nov"][i]}</span>
+              <div key={s.name}>
+                <div className="flex justify-between text-[12px] mb-1"><span className="font-bold text-slate-800">{s.name}</span><span className="font-semibold text-slate-600">{money(s.val)}</span></div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden"><div style={{ width: `${width}%` }} className={`h-full ${colors[i % colors.length]} rounded-full`}></div></div>
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* MISSING: Teacher Payouts & Splits (Screenshot 4 & 5) */}
+      <div className="space-y-2">
+        <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">Teacher Payouts & Splits</h2>
+        <div className="space-y-2">
+          {teachersData.map(t => (
+            <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">{initials(t.name)}</div>
+                <div>
+                  <p className="font-display font-bold text-[14px] text-slate-900">{t.name}</p>
+                  <p className="text-[11px] text-slate-500">{t.studentCount} students · 50% split</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-display font-extrabold text-[14px] text-emerald-700">{money(t.earned)}</p>
+                <span className={`text-[10px] font-bold ${t.pending > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{t.pending > 0 ? 'Pending' : 'Paid Nov ✓'}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </main>

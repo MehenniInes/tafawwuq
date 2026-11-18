@@ -5,36 +5,34 @@ import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
 const money = (n: number) => Number(n).toLocaleString() + " DA";
-const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
-const localDate = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 export default function Home() {
   const router = useRouter();
   const [tab, setTab] = useState<"students" | "teachers">("students");
   const [cycles, setCycles] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
-  const [payouts, setPayouts] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [ready, setReady] = useState(false);
 
-  // Payment Modal State
-  const [showPay, setShowPay] = useState(false);
-  const [payAmt, setPayAmt] = useState("");
-  const [payTarget, setPayTarget] = useState<any>(null);
+  // Modals
+  const [payStudent, setPayStudent] = useState<any>(null);
+  const [payTeacher, setPayTeacher] = useState<any>(null);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("Cash (Espèces)");
+  const [note, setNote] = useState("");
 
   async function load() {
     const { data } = await supabase.auth.getSession();
     if (!data.session) return router.push("/login");
-    const [c, t, po, st, su] = await Promise.all([
-      supabase.from("cycle_status").select("*").order("created_at", { ascending: false }),
-      supabase.from("teacher_balance").select("*").order("name"),
-      supabase.from("teacher_payouts").select("*").order("paid_on", { ascending: false }),
+    const [c, t, st, su] = await Promise.all([
+      supabase.from("cycle_status").select("*"),
+      supabase.from("teacher_balance").select("*"),
       supabase.from("students").select("id, name"),
       supabase.from("subjects").select("id, name, level"),
     ]);
-    setCycles(c.data ?? []); setTeachers(t.data ?? []); setPayouts(po.data ?? []);
-    setStudents(st.data ?? []); setSubjects(su.data ?? []); setReady(true);
+    setCycles(c.data ?? []); setTeachers(t.data ?? []); setStudents(st.data ?? []); setSubjects(su.data ?? []);
+    setReady(true);
   }
   useEffect(() => { load(); }, []);
 
@@ -53,27 +51,18 @@ export default function Home() {
 
   async function handleStudentPay(e: any) {
     e.preventDefault();
-    const amount = Number(payAmt);
-    if (!amount || amount <= 0) return alert("Enter amount");
-    
-    // Rule 2: Double payment guard
-    if (Number(payTarget.remaining) <= 0) return alert("You already marked payment for this month.");
-
-    const { error } = await supabase.from("payments").insert({
-      cycle_id: payTarget.id, amount, paid_on: localDate(),
-    });
+    const amt = Number(amount);
+    if (amt <= 0 || amt > payStudent.remaining) return alert("Invalid amount");
+    const { error } = await supabase.from("payments").insert({ cycle_id: payStudent.id, amount: amt, note });
     if (error) return alert(error.message);
-    setShowPay(false); setPayAmt(""); load();
+    setPayStudent(null); load();
   }
 
-  async function handleTeacherPay(teacherId: string) {
-    const amt = prompt("Enter amount to pay teacher:");
-    if (!amt || Number(amt) <= 0) return;
-    const { error } = await supabase.from("teacher_payouts").insert({
-      teacher_id: teacherId, amount: Number(amt), paid_on: localDate(), note: "Monthly payout"
-    });
+  async function handleTeacherPay(e: any) {
+    e.preventDefault();
+    const { error } = await supabase.from("teacher_payouts").insert({ teacher_id: payTeacher.teacher_id, amount: Number(amount), note });
     if (error) return alert(error.message);
-    load();
+    setPayTeacher(null); load();
   }
 
   if (!ready) return <main className={ui.page}>Loading...</main>;
@@ -81,13 +70,7 @@ export default function Home() {
   return (
     <main className={ui.page}>
       <header className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-[12px] font-medium text-slate-500">Cashflow & Payroll</p>
-          <h1 className="font-display text-[24px] font-extrabold text-slate-900">Money</h1>
-        </div>
-        <button onClick={() => setTab(tab === "students" ? "teachers" : "students")} className="h-10 px-3.5 rounded-full bg-emerald-600 text-white text-[12px] font-semibold shadow-2xs spring-press">
-          + {tab === "students" ? "Collect Fee" : "Pay Teacher"}
-        </button>
+        <div><p className="text-[12px] font-medium text-slate-500">Cashflow & Payroll</p><h1 className="font-display text-[24px] font-extrabold text-slate-900">Money</h1></div>
       </header>
 
       <div className="grid grid-cols-2 bg-slate-200/80 p-1 rounded-2xl text-[13px] font-semibold mb-4">
@@ -106,16 +89,13 @@ export default function Home() {
               <div><span className="text-[10px] text-emerald-200 block uppercase">Teachers Paid</span><span className="font-bold">{money(teacherPaid)}</span></div>
             </div>
           </div>
-
           <div className="space-y-2">
-            <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pending Student Payments ({unpaidStudents.length})</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pending Payments ({unpaidStudents.length})</h2>
             <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
               {unpaidStudents.map((c) => (
-                <div key={c.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div key={c.id} className="px-4 py-3 flex items-center justify-between">
                   <div><p className="font-bold text-[14px] text-slate-900">{nameOf(c.student_id)}</p><p className="text-[11px] text-slate-500">{subjOf(c.subject_id)}</p></div>
-                  <button onClick={() => { setPayTarget(c); setPayAmt(c.remaining.toString()); setShowPay(true); }} className="h-8 px-3 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold spring-press">
-                    Collect {money(c.remaining)}
-                  </button>
+                  <button onClick={() => { setPayStudent(c); setAmount(c.remaining.toString()); }} className="h-8 px-3 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">Collect</button>
                 </div>
               ))}
             </div>
@@ -128,23 +108,14 @@ export default function Home() {
           <div className="rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 p-5 text-white shadow-md">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-200">PAYROLL SUMMARY</span>
             <p className="font-display text-[30px] font-extrabold mt-1">{money(sum(teachers, "owed") - teacherPaid)}</p>
-            <p className="text-[12px] text-indigo-200 mt-0.5">Calculated from active group enrollments</p>
           </div>
           <div className="space-y-2.5">
             {teachers.map((t) => {
               const bal = Number(t.owed) - Number(t.paid_out);
               return (
-                <div key={t.teacher_id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 font-bold flex items-center justify-center">{initials(t.name)}</div>
-                      <div><h3 className="font-bold text-slate-900">{t.name}</h3><p className="text-[11px] text-slate-500">Earned {money(t.owed)}</p></div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${bal > 0 ? "bg-amber-100 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>{bal > 0 ? `${money(bal)} Due` : "Paid"}</span>
-                  </div>
-                  {bal > 0 && (
-                    <button onClick={() => handleTeacherPay(t.teacher_id)} className="w-full h-10 rounded-xl bg-indigo-600 text-white font-semibold text-[13px] spring-press">Confirm Payout</button>
-                  )}
+                <div key={t.teacher_id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
+                  <div><h3 className="font-bold text-slate-900">{t.name}</h3><p className="text-[11px] text-slate-500">Earned {money(t.owed)}</p></div>
+                  {bal > 0 ? <button onClick={() => { setPayTeacher(t); setAmount(bal.toString()); }} className="h-8 px-3 rounded-full bg-indigo-600 text-white text-[11px] font-bold">Pay</button> : <span className="text-[11px] font-bold text-emerald-600">Paid ✓</span>}
                 </div>
               );
             })}
@@ -152,20 +123,49 @@ export default function Home() {
         </div>
       )}
 
-      {/* Payment Bottom Sheet */}
-      {showPay && payTarget && (
+      {/* EXACT Collect Fee Sheet from Screenshot 3 */}
+      {payStudent && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div onClick={() => setShowPay(false)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div onClick={() => setPayStudent(null)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
           <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
-             <h3 className="font-display font-extrabold text-lg mb-4">Collect Student Fee</h3>
-             <form onSubmit={handleStudentPay} className="space-y-4">
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex justify-between items-center">
-                  <div><span className="text-[10px] font-bold uppercase text-emerald-800 block">Remaining Balance</span><span className="text-[12px] text-emerald-700">{nameOf(payTarget.student_id)}</span></div>
-                  <span className="font-display text-[20px] font-extrabold text-emerald-700">{money(payTarget.remaining)}</span>
-                </div>
-                <input type="number" required value={payAmt} onChange={(e)=>setPayAmt(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[15px] font-extrabold text-emerald-700 focus:ring-2 focus:ring-emerald-600 outline-none" placeholder="Amount paying..." />
-                <button type="submit" className="w-full h-12 rounded-full bg-emerald-600 text-white font-semibold spring-press">Confirm & Issue Receipt</button>
-             </form>
+            <h3 className="font-display font-extrabold text-lg mb-4">Collect Student Fee</h3>
+            <form onSubmit={handleStudentPay} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Select Student</label>
+                <div className="h-12 px-4 rounded-xl border border-slate-300 flex items-center font-bold">{nameOf(payStudent.student_id)} (Owes {money(payStudent.remaining)})</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Amount (DA)</label><input type="number" value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[15px] font-extrabold text-emerald-700" /></div>
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Method</label><select value={method} onChange={(e)=>setMethod(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 bg-white"><option>Cash (Espèces)</option><option>BaridiMob</option></select></div>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex justify-between items-center">
+                <div><span className="text-[11px] font-bold uppercase text-emerald-800 block">Remaining Balance</span><span className="text-[12px] text-emerald-700">Full settlement · Receipt saved</span></div>
+                <span className="font-display text-[20px] font-extrabold text-emerald-700">{money(payStudent.remaining - Number(amount || 0))}</span>
+              </div>
+              <button type="submit" className="w-full h-12 rounded-full bg-emerald-600 text-white font-semibold shadow-sm spring-press">Confirm & Issue Receipt</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EXACT Teacher Payroll Sheet from Screenshot 2 */}
+      {payTeacher && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div onClick={() => setPayTeacher(null)} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px] backdrop-fade" />
+          <div className="relative bg-white rounded-t-[28px] p-5 shadow-2xl sheet-up w-full max-w-md mx-auto">
+            <div className="mb-4"><span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-extrabold">TEACHER PAYROLL</span><h3 className="font-display text-lg font-extrabold mt-1">{payTeacher.name}</h3></div>
+            <form onSubmit={handleTeacherPay} className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+                <div className="flex justify-between text-[12px]"><span className="text-slate-500">Total Tuition</span><span className="font-bold">{money(payTeacher.owed)}</span></div>
+                <div className="flex justify-between text-[12px]"><span className="text-slate-500">Teacher Share</span><span className="font-extrabold text-indigo-700">{money(payTeacher.owed - payTeacher.paid_out)}</span></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Amount (DA)</label><input type="number" value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300 text-[15px] font-extrabold" /></div>
+                <div><label className="text-[11px] font-bold uppercase text-slate-500 block mb-1">Method</label><select value={method} onChange={(e)=>setMethod(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 bg-white"><option>Cash (Espèces)</option><option>BaridiMob</option></select></div>
+              </div>
+              <input type="text" placeholder="Note (e.g. November 2026)" value={note} onChange={(e)=>setNote(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-slate-300" />
+              <button type="submit" className="w-full h-12 rounded-full bg-indigo-600 text-white font-semibold shadow-sm spring-press">Confirm Teacher Payment</button>
+            </form>
           </div>
         </div>
       )}
