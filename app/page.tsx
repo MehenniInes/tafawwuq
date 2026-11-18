@@ -6,27 +6,34 @@ import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
 const money = (n: number) => Number(n).toLocaleString() + " DA";
+const localDate = (d = new Date()) =>
+  new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 export default function Home() {
   const router = useRouter();
   const [cycles, setCycles] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [payouts, setPayouts] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [payAmt, setPayAmt] = useState<Record<string, string>>({});
+  const [payNote, setPayNote] = useState<Record<string, string>>({});
+  const [openHist, setOpenHist] = useState<Record<string, boolean>>({});
   const [ready, setReady] = useState(false);
 
   async function load() {
     const { data } = await supabase.auth.getSession();
     if (!data.session) return router.push("/login");
-    const [c, t, st, su] = await Promise.all([
+    const [c, t, po, st, su] = await Promise.all([
       supabase.from("cycle_status").select("*").order("created_at", { ascending: false }),
       supabase.from("teacher_balance").select("*").order("name"),
+      supabase.from("teacher_payouts").select("*").order("paid_on", { ascending: false }),
       supabase.from("students").select("id, name"),
       supabase.from("subjects").select("id, name, level"),
     ]);
     setCycles(c.data ?? []);
     setTeachers(t.data ?? []);
+    setPayouts(po.data ?? []);
     setStudents(st.data ?? []);
     setSubjects(su.data ?? []);
     setReady(true);
@@ -38,9 +45,22 @@ export default function Home() {
   async function payTeacher(teacherId: string) {
     const a = Number(payAmt[teacherId]);
     if (!a || a <= 0) return alert("Enter an amount");
-    const { error } = await supabase.from("teacher_payouts").insert({ teacher_id: teacherId, amount: a });
+    const { error } = await supabase.from("teacher_payouts").insert({
+      teacher_id: teacherId,
+      amount: a,
+      paid_on: localDate(),
+      note: payNote[teacherId] || null,
+    });
     if (error) return alert(error.message);
     setPayAmt({ ...payAmt, [teacherId]: "" });
+    setPayNote({ ...payNote, [teacherId]: "" });
+    load();
+  }
+
+  async function deletePayout(id: string) {
+    if (!confirm("Delete this payout?")) return;
+    const { error } = await supabase.from("teacher_payouts").delete().eq("id", id);
+    if (error) return alert(error.message);
     load();
   }
 
@@ -134,6 +154,7 @@ export default function Home() {
             <p className={ui.label}>Teachers</p>
             {teachers.map((t) => {
               const bal = Number(t.owed) - Number(t.paid_out);
+              const hist = payouts.filter((p) => p.teacher_id === t.teacher_id);
               return (
                 <div key={t.teacher_id} className={`${ui.card} space-y-3`}>
                   <div className="flex items-center justify-between">
@@ -149,7 +170,8 @@ export default function Home() {
                   <p className={ui.muted}>
                     Earned {money(t.owed)} · Paid {money(t.paid_out)}
                   </p>
-                  <div className="flex gap-2">
+
+                  <div className="space-y-2">
                     <input
                       className={ui.input}
                       type="number"
@@ -157,10 +179,43 @@ export default function Home() {
                       value={payAmt[t.teacher_id] ?? ""}
                       onChange={(e) => setPayAmt({ ...payAmt, [t.teacher_id]: e.target.value })}
                     />
-                    <button onClick={() => payTeacher(t.teacher_id)} className="rounded-xl bg-teal-700 px-5 font-medium text-white">
-                      Pay
+                    <input
+                      className={ui.input}
+                      placeholder="Note (optional)"
+                      value={payNote[t.teacher_id] ?? ""}
+                      onChange={(e) => setPayNote({ ...payNote, [t.teacher_id]: e.target.value })}
+                    />
+                    <button onClick={() => payTeacher(t.teacher_id)} className={ui.btn}>
+                      Pay teacher
                     </button>
                   </div>
+
+                  <button
+                    onClick={() => setOpenHist({ ...openHist, [t.teacher_id]: !openHist[t.teacher_id] })}
+                    className={ui.link}
+                  >
+                    {openHist[t.teacher_id] ? "Hide" : "Show"} payout history ({hist.length})
+                  </button>
+
+                  {openHist[t.teacher_id] && (
+                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
+                      {hist.length === 0 && <li className="py-2 text-sm text-gray-500">No payouts yet.</li>}
+                      {hist.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between gap-2 py-2">
+                          <div className="min-w-0">
+                            <p className="font-medium tabular-nums">{money(p.amount)}</p>
+                            <p className="truncate text-xs text-gray-500">
+                              {p.paid_on}
+                              {p.note ? ` · ${p.note}` : ""}
+                            </p>
+                          </div>
+                          <button onClick={() => deletePayout(p.id)} className="text-sm font-medium text-red-600">
+                            Delete
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}
