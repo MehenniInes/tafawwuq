@@ -6,12 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { ui } from "@/components/ui";
 
 const money = (n: number) => Number(n).toLocaleString() + " DA";
-
 const pad = (n: number) => String(n).padStart(2, "0");
-const thisMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-};
+const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
 const shift = (m: string, delta: number) => {
   const [y, mo] = m.split("-").map(Number);
   const d = new Date(y, mo - 1 + delta, 1);
@@ -46,30 +42,15 @@ export default function Report() {
       supabase.from("subjects").select("id, name, level, teacher_id"),
       supabase.from("teachers").select("id, name").order("name"),
     ]);
-    setAllCycles(cy.data ?? []);
-    setPayments(pay.data ?? []);
-    setPayouts(out.data ?? []);
-    setStudents(st.data ?? []);
-    setSubjects(su.data ?? []);
-    setTeachers(te.data ?? []);
+    setAllCycles(cy.data ?? []); setPayments(pay.data ?? []); setPayouts(out.data ?? []);
+    setStudents(st.data ?? []); setSubjects(su.data ?? []); setTeachers(te.data ?? []);
     setReady(true);
   }
 
-  useEffect(() => {
-    setMonth(thisMonth());
-  }, []);
+  useEffect(() => { setMonth(thisMonth()); }, []);
+  useEffect(() => { if (month) load(month); }, [month]);
 
-  useEffect(() => {
-    if (month) load(month);
-  }, [month]);
-
-  if (!month) {
-    return (
-      <main className={ui.page}>
-        <p className={ui.muted}>Loading...</p>
-      </main>
-    );
-  }
+  if (!month) return <main className={ui.page}><p className={ui.muted}>Loading...</p></main>;
 
   const { start, end } = bounds(month);
   const monthCycles = allCycles.filter((c) => c.start_date >= start && c.start_date < end);
@@ -99,90 +80,79 @@ export default function Report() {
 
   return (
     <main className={ui.page}>
-      <h1 className={ui.title}>Monthly report</h1>
+      <div>
+        <p className={ui.muted}>Center Analytics</p>
+        <h1 className={ui.title}>Reports</h1>
+      </div>
 
-      <div className="flex items-center gap-2">
-        <button onClick={() => setMonth(shift(month, -1))} className={ui.btn2}>
-          Prev
-        </button>
-        <p className="flex-1 text-center font-semibold">{label(month)}</p>
-        <button onClick={() => setMonth(shift(month, 1))} className={ui.btn2}>
-          Next
-        </button>
+      <div className="bg-white border border-slate-200 rounded-full p-1 flex items-center justify-between shadow-2xs">
+        <button onClick={() => setMonth(shift(month, -1))} aria-label="Prev"
+          className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-700 spring-press">‹</button>
+        <span className="font-display text-[14px] font-bold text-slate-900">{label(month)}</span>
+        <button onClick={() => setMonth(shift(month, 1))} aria-label="Next"
+          className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-700 spring-press">›</button>
       </div>
 
       {!ready ? (
         <p className={ui.muted}>Loading...</p>
       ) : (
         <>
-          <div className="rounded-2xl bg-teal-700 p-5 text-white">
-            <p className="text-xs font-medium uppercase tracking-wide opacity-80">Net this month</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums">{money(net)}</p>
-            <p className="mt-2 text-sm opacity-80">
+          <div className="rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 p-5 text-white shadow-md">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-200">NET THIS MONTH</span>
+            <p className="font-display text-[30px] font-extrabold tracking-tight mt-1 tabular-nums">{money(net)}</p>
+            <p className="text-[12px] text-indigo-200 mt-0.5">
               Collected {money(collected)} minus paid to teachers {money(paidOut)}
             </p>
           </div>
 
-          <section className={`${ui.card} space-y-3`}>
+          <section className={`${ui.card} space-y-2.5`}>
             <p className={ui.label}>Months started in {label(month)}</p>
-            <div className="flex justify-between">
-              <span>Fees billed</span>
-              <b className="tabular-nums">{money(billed)}</b>
-            </div>
-            <div className="flex justify-between">
-              <span>Teacher shares earned</span>
-              <b className="tabular-nums">{money(shares)}</b>
-            </div>
-            <div className="flex justify-between border-t border-gray-100 pt-3">
-              <span>Expected net</span>
-              <b className="tabular-nums">{money(expectedNet)}</b>
-            </div>
-            <div className="flex justify-between">
-              <span>Still not collected</span>
-              <b className="tabular-nums text-red-600">{money(notCollected)}</b>
-            </div>
+            <div className="flex justify-between text-[13px]"><span className="text-slate-600">Fees billed</span><b className="tabular-nums">{money(billed)}</b></div>
+            <div className="flex justify-between text-[13px]"><span className="text-slate-600">Teacher shares</span><b className="tabular-nums">{money(shares)}</b></div>
+            <div className="flex justify-between text-[13px] border-t border-slate-100 pt-2.5"><span className="text-slate-600">Expected net</span><b className="tabular-nums">{money(expectedNet)}</b></div>
+            <div className="flex justify-between text-[13px]"><span className="text-slate-600">Not collected</span><b className="tabular-nums text-rose-600">{money(notCollected)}</b></div>
           </section>
 
           <section className="space-y-2">
-            <p className={ui.label}>Teachers</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">Teachers</p>
             {teacherRows.map((t) => (
               <div key={t.id} className={`${ui.card} !p-3`}>
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold">{t.name}</p>
-                  <span className={`text-sm font-medium ${t.diff > 0 ? "text-red-600" : "text-teal-700"}`}>
-                    {t.diff > 0 ? `${money(t.diff)} not paid yet` : "Paid in full"}
+                  <p className="font-display font-bold text-slate-900">{t.name}</p>
+                  <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                    t.diff > 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    {t.diff > 0 ? `${money(t.diff)} unpaid` : "Paid in full"}
                   </span>
                 </div>
-                <p className={ui.muted}>
-                  Earned {money(t.earned)} · Paid {money(t.paid)}
-                </p>
+                <p className="text-[11px] text-slate-500 mt-1">Earned {money(t.earned)} · Paid {money(t.paid)}</p>
               </div>
             ))}
           </section>
 
           <section className="space-y-2">
-            <p className={ui.label}>Payments received ({payments.length})</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">
+              Payments Received ({payments.length})
+            </p>
             {payments.length === 0 && <p className={ui.muted}>No payments this month.</p>}
-            {payments.map((p) => {
-              const c = cycleOf(p.cycle_id);
-              return (
-                <Link
-                  key={p.id}
-                  href={c ? `/students/${c.student_id}` : "/students"}
-                  className={`${ui.card} flex items-center justify-between gap-2 !p-3`}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{c ? nameOf(c.student_id) : "?"}</p>
-                    <p className="truncate text-xs text-gray-500">
-                      {p.paid_on}
-                      {c ? ` · ${subjOf(c.subject_id)}` : ""}
-                      {p.note ? ` · ${p.note}` : ""}
-                    </p>
-                  </div>
-                  <span className="shrink-0 font-semibold tabular-nums text-teal-700">{money(p.amount)}</span>
-                </Link>
-              );
-            })}
+            {payments.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200/90 divide-y divide-slate-100 overflow-hidden">
+                {payments.map((p) => {
+                  const c = cycleOf(p.cycle_id);
+                  return (
+                    <Link key={p.id} href={c ? `/students/${c.student_id}` : "/students"}
+                      className="flex items-center justify-between gap-2 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-display font-bold text-slate-900">{c ? nameOf(c.student_id) : "?"}</p>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {p.paid_on}{c ? ` · ${subjOf(c.subject_id)}` : ""}{p.note ? ` · ${p.note}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-bold tabular-nums text-emerald-700">{money(p.amount)}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </>
       )}

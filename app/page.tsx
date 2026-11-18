@@ -38,9 +38,7 @@ export default function Home() {
     setSubjects(su.data ?? []);
     setReady(true);
   }
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   async function payTeacher(teacherId: string) {
     const a = Number(payAmt[teacherId]);
@@ -74,9 +72,7 @@ export default function Home() {
   const expectedNet = totalFees - teacherOwed;
 
   const latest = new Map<string, any>();
-  cycles.forEach((c) => {
-    if (!latest.has(c.enrollment_id)) latest.set(c.enrollment_id, c);
-  });
+  cycles.forEach((c) => { if (!latest.has(c.enrollment_id)) latest.set(c.enrollment_id, c); });
   const renew = Array.from(latest.values()).filter((c) => c.month_finished);
   const unpaid = cycles.filter((c) => Number(c.remaining) > 0);
 
@@ -88,130 +84,126 @@ export default function Home() {
 
   return (
     <main className={ui.page}>
-      <h1 className={ui.title}>Money</h1>
+      <div>
+        <p className={ui.muted}>Cashflow & Payroll</p>
+        <h1 className={ui.title}>Money</h1>
+      </div>
 
       {!ready ? (
         <p className={ui.muted}>Loading...</p>
       ) : (
         <>
-          <div className="rounded-2xl bg-teal-700 p-5 text-white">
-            <p className="text-xs font-medium uppercase tracking-wide opacity-80">Net now</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums">{money(net)}</p>
-            <p className="mt-2 text-sm opacity-80">Expected when everyone pays: {money(expectedNet)}</p>
+          {/* Emerald Hero */}
+          <div className="rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 p-5 text-white shadow-md">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">NET BALANCE NOW</span>
+            <p className="font-display text-[32px] font-extrabold tracking-tight mt-1 tabular-nums">{money(net)}</p>
+            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-white/15">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-emerald-200 block">Collected</span>
+                <span className="font-display text-[13px] font-bold tabular-nums">{money(collected)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-emerald-200 block">Still Owed</span>
+                <span className="font-display text-[13px] font-bold tabular-nums text-amber-200">{money(stillOwed)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-emerald-200 block">Teachers Paid</span>
+                <span className="font-display text-[13px] font-bold tabular-nums">{money(teacherPaid)}</span>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] text-emerald-100">Expected when everyone pays: {money(expectedNet)}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className={ui.card}>
-              <p className={ui.label}>Collected</p>
-              <p className="mt-1 font-semibold tabular-nums">{money(collected)}</p>
-            </div>
-            <div className={ui.card}>
-              <p className={ui.label}>Still owed</p>
-              <p className="mt-1 font-semibold tabular-nums text-red-600">{money(stillOwed)}</p>
-            </div>
-            <div className={ui.card}>
-              <p className={ui.label}>To teachers</p>
-              <p className="mt-1 font-semibold tabular-nums">{money(teacherPaid)}</p>
-            </div>
-          </div>
-
+          {/* Renewals */}
           <section className="space-y-2">
-            <p className={ui.label}>Renew now ({renew.length})</p>
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5 px-0.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              Renewals Due ({renew.length})
+            </h2>
             {renew.length === 0 && <p className={ui.muted}>No finished months.</p>}
             {renew.map((c) => (
-              <Link
-                key={c.id}
-                href={`/students/${c.student_id}`}
-                className="block rounded-2xl border border-amber-300 bg-amber-50 p-3"
-              >
-                <p className="font-semibold">{nameOf(c.student_id)}</p>
-                <p className="text-sm text-gray-600">
+              <Link key={c.id} href={`/students/${c.student_id}`}
+                className="block rounded-2xl border border-amber-200 bg-amber-50 p-3.5 spring-press">
+                <p className="font-display font-bold text-slate-900">{nameOf(c.student_id)}</p>
+                <p className="text-[12px] text-amber-900 mt-0.5">
                   {subjOf(c.subject_id)} · left {money(c.remaining)}
                 </p>
               </Link>
             ))}
           </section>
 
+          {/* Unpaid */}
           <section className="space-y-2">
-            <p className={ui.label}>Unpaid ({unpaid.length})</p>
-            {unpaid.length === 0 && <p className={ui.muted}>Nothing unpaid.</p>}
-            {unpaid.map((c) => (
-              <Link
-                key={c.id}
-                href={`/students/${c.student_id}`}
-                className={`${ui.card} flex items-center justify-between gap-2 !p-3`}
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{nameOf(c.student_id)}</p>
-                  <p className="truncate text-sm text-gray-500">{subjOf(c.subject_id)}</p>
-                </div>
-                <span className="shrink-0 font-semibold tabular-nums text-red-600">{money(c.remaining)}</span>
-              </Link>
-            ))}
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">
+              Pending Student Payments ({unpaid.length})
+            </h2>
+            {unpaid.length === 0 ? (
+              <p className={ui.muted}>Nothing unpaid.</p>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200/90 divide-y divide-slate-100 overflow-hidden">
+                {unpaid.map((c) => (
+                  <Link key={c.id} href={`/students/${c.student_id}`}
+                    className="flex items-center justify-between gap-2 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-display font-bold text-slate-900">{nameOf(c.student_id)}</p>
+                      <p className="truncate text-[11px] text-slate-500">{subjOf(c.subject_id)}</p>
+                    </div>
+                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 text-[11px] font-bold tabular-nums">
+                      {money(c.remaining)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
 
+          {/* Teachers */}
           <section className="space-y-2">
-            <p className={ui.label}>Teachers</p>
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-0.5">Teachers</h2>
             {teachers.map((t) => {
               const bal = Number(t.owed) - Number(t.paid_out);
               const hist = payouts.filter((p) => p.teacher_id === t.teacher_id);
               return (
                 <div key={t.teacher_id} className={`${ui.card} space-y-3`}>
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold">{t.name}</p>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
-                        bal > 0 ? "bg-red-50 text-red-700" : "bg-teal-50 text-teal-700"
-                      }`}
-                    >
+                    <p className="font-display font-bold text-slate-900">{t.name}</p>
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${
+                      bal > 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>
                       {bal > 0 ? `${money(bal)} to pay` : "Settled"}
                     </span>
                   </div>
-                  <p className={ui.muted}>
-                    Earned {money(t.owed)} · Paid {money(t.paid_out)}
-                  </p>
+                  <p className={ui.muted}>Earned {money(t.owed)} · Paid {money(t.paid_out)}</p>
 
                   <div className="space-y-2">
-                    <input
-                      className={ui.input}
-                      type="number"
-                      placeholder="Amount paid (DA)"
+                    <input className={ui.input} type="number" placeholder="Amount paid (DA)"
                       value={payAmt[t.teacher_id] ?? ""}
-                      onChange={(e) => setPayAmt({ ...payAmt, [t.teacher_id]: e.target.value })}
-                    />
-                    <input
-                      className={ui.input}
-                      placeholder="Note (optional)"
+                      onChange={(e) => setPayAmt({ ...payAmt, [t.teacher_id]: e.target.value })} />
+                    <input className={ui.input} placeholder="Note (optional)"
                       value={payNote[t.teacher_id] ?? ""}
-                      onChange={(e) => setPayNote({ ...payNote, [t.teacher_id]: e.target.value })}
-                    />
+                      onChange={(e) => setPayNote({ ...payNote, [t.teacher_id]: e.target.value })} />
                     <button onClick={() => payTeacher(t.teacher_id)} className={ui.btn}>
                       Pay teacher
                     </button>
                   </div>
 
-                  <button
-                    onClick={() => setOpenHist({ ...openHist, [t.teacher_id]: !openHist[t.teacher_id] })}
-                    className={ui.link}
-                  >
+                  <button onClick={() => setOpenHist({ ...openHist, [t.teacher_id]: !openHist[t.teacher_id] })}
+                    className={ui.link}>
                     {openHist[t.teacher_id] ? "Hide" : "Show"} payout history ({hist.length})
                   </button>
 
                   {openHist[t.teacher_id] && (
-                    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
-                      {hist.length === 0 && <li className="py-2 text-sm text-gray-500">No payouts yet.</li>}
+                    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 px-3">
+                      {hist.length === 0 && <li className="py-2 text-[12px] text-slate-500">No payouts yet.</li>}
                       {hist.map((p) => (
                         <li key={p.id} className="flex items-center justify-between gap-2 py-2">
                           <div className="min-w-0">
-                            <p className="font-medium tabular-nums">{money(p.amount)}</p>
-                            <p className="truncate text-xs text-gray-500">
-                              {p.paid_on}
-                              {p.note ? ` · ${p.note}` : ""}
+                            <p className="font-semibold tabular-nums text-slate-900">{money(p.amount)}</p>
+                            <p className="truncate text-[11px] text-slate-500">
+                              {p.paid_on}{p.note ? ` · ${p.note}` : ""}
                             </p>
                           </div>
-                          <button onClick={() => deletePayout(p.id)} className="text-sm font-medium text-red-600">
-                            Delete
-                          </button>
+                          <button onClick={() => deletePayout(p.id)}
+                            className="text-[12px] font-semibold text-rose-600">Delete</button>
                         </li>
                       ))}
                     </ul>
